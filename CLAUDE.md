@@ -50,6 +50,10 @@ redeploying all of them, the protocol is **additive**:
   (check `caps`/`version`) and fall back instead of erroring.
 - Bump `AGENT_VERSION` when behavior changes; only rebuild/redeploy agents for features that need
   new data *from* the agent (e.g. drive labels). Web-only changes need no agent rebuild.
+- **One agent per machine.** AgentId is the MachineGuid, so two processes would share one queue
+  and race for commands. A named mutex (`Global\rmdownloader-agent-<id>`) enforces single-instance:
+  a second copy prints a message and exits. To upgrade: **stop the running agent first** (its lock
+  releases), then start the new build — starting a new one while the old runs makes the *new* one exit.
 
 ## Build / run
 - Agent: `cd agent && build.bat`, set `agent.conf`, run `Agent.exe` (auto-start via the PS1).

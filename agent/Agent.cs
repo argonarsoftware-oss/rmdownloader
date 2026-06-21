@@ -22,6 +22,7 @@ class Agent
     static string Token = "change-me-please";
     static string Root = "";                       // optional sandbox; empty = whole machine
     static string AgentId = "";                    // stable per-machine id (for auto-enroll)
+    static Mutex _singleInstance;                  // held for process lifetime; one agent per machine
     static readonly JavaScriptSerializer J = new JavaScriptSerializer();
 
     // ---- protocol version + capabilities (for backward/forward compatibility) ----
@@ -59,6 +60,18 @@ class Agent
         if (!tokenFromArg && positional.Count >= 1) Token = positional[0];
         Server = Server.TrimEnd('/');
         AgentId = GetAgentId();
+
+        // Single-instance guard: only ONE agent per machine may run. A second copy (e.g. an
+        // older build left running, or a double boot) would race for commands off the shared
+        // queue and corrupt the stateful terminal, so it exits immediately. To upgrade, stop
+        // the running agent first (its lock releases), then start the new one.
+        bool firstInstance;
+        _singleInstance = new Mutex(true, "Global\\rmdownloader-agent-" + AgentId, out firstInstance);
+        if (!firstInstance)
+        {
+            Console.WriteLine("Another agent instance is already running on this PC. Exiting.");
+            return;
+        }
 
         bool tokenValid = !(Token.Length == 0 || Token == "change-me-please" || Token == "CHANGE-THIS-TO-A-LONG-RANDOM-SECRET");
         if (!tokenValid)
