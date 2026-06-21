@@ -126,6 +126,7 @@ class Agent
             case "mkdir":    return DoMkdir(Str(cmd, "path"));
             case "delete":   return DoDelete(Str(cmd, "path"));
             case "rename":   return DoRename(Str(cmd, "path"), Str(cmd, "newName"));
+            case "exec":     return DoExec(Str(cmd, "command"), Str(cmd, "cwd"));
             default:         return Err("unknown op: " + op);
         }
     }
@@ -285,6 +286,39 @@ class Agent
         if (Directory.Exists(full)) Directory.Move(full, dest);
         else File.Move(full, dest);
         var r = Ok(); r["path"] = dest; return r;
+    }
+
+    static Dictionary<string, object> DoExec(string command, string cwd)
+    {
+        if (string.IsNullOrEmpty(command)) return Err("command required");
+        ProcessStartInfo psi = new ProcessStartInfo("cmd.exe", "/c " + command);
+        psi.UseShellExecute = false;
+        psi.CreateNoWindow = true;
+        psi.RedirectStandardOutput = true;
+        psi.RedirectStandardError = true;
+        psi.StandardOutputEncoding = Encoding.UTF8;
+        psi.StandardErrorEncoding = Encoding.UTF8;
+        if (!string.IsNullOrEmpty(cwd) && Directory.Exists(cwd)) psi.WorkingDirectory = cwd;
+        else if (Root.Length > 0 && Directory.Exists(Root)) psi.WorkingDirectory = Root;
+
+        Process p = Process.Start(psi);
+        // Read stderr on a separate thread so neither pipe can deadlock.
+        string err = "";
+        Thread te = new Thread(delegate() { try { err = p.StandardError.ReadToEnd(); } catch { } });
+        te.Start();
+        string outp = p.StandardOutput.ReadToEnd();
+        te.Join(3000);
+        if (!p.WaitForExit(60000)) { try { p.Kill(); } catch { } return Err("command timed out (60s)"); }
+
+        const int cap = 200 * 1024;
+        if (outp.Length > cap) outp = outp.Substring(0, cap) + "\n...[truncated]";
+        if (err.Length > cap) err = err.Substring(0, cap) + "\n...[truncated]";
+
+        Dictionary<string, object> r = Ok();
+        r["exit"] = p.ExitCode;
+        r["stdout"] = outp;
+        r["stderr"] = err;
+        return r;
     }
 
     // ---- HTTP ----

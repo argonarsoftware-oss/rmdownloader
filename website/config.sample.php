@@ -30,3 +30,9 @@ define('SESSION_TIMEOUT', 1800);     // idle timeout, seconds
 // Leave '' to disable key access (browser login only). Use a long random value over HTTPS.
 //   e.g.  GET api.php?action=list&agent=pc1&path=C:\&key=<API_KEY>
 define('API_KEY', '');
+
+// ---- Remote terminal ----
+// Allow running shell commands on the agent PC from the web "Terminal" panel.
+// Commands run as whatever user the agent runs as (SYSTEM if auto-started elevated).
+// Set false to disable command execution entirely.
+define('ALLOW_EXEC', true);

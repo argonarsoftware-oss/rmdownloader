@@ -70,3 +70,15 @@ tr:hover .row-act{visibility:visible}
 .x{background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer;line-height:1}
 #editorText{flex:1;width:100%;border:none;background:#0c0e14;color:var(--text);padding:14px;
   font:13px/1.5 Consolas,Menlo,monospace;resize:none;outline:none}
+
+/* terminal */
+.term-out{flex:1;margin:0;padding:14px;overflow:auto;background:#0c0e14;color:#cfe3d0;
+  font:12.5px/1.5 Consolas,Menlo,monospace;white-space:pre-wrap;word-break:break-word}
+.term-out .cmd{color:#7fb2ff}
+.term-out .err{color:#ff9a9a}
+.term-out .code{color:var(--muted)}
+.term-input{display:flex;align-items:center;gap:8px;padding:10px 14px;border-top:1px solid var(--line)}
+.term-prompt{color:var(--green);font-family:Consolas,monospace}
+.term-input input{flex:1;background:#0c0e14;border:1px solid var(--line);color:var(--text);
+  padding:8px 10px;border-radius:7px;outline:none;font:13px/1.4 Consolas,Menlo,monospace}
+.term-input input:focus{border-color:var(--accent)}

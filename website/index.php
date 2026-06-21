@@ -27,6 +27,7 @@ require_login();
   <button class="btn" id="btnNewFolder">＋ New folder</button>
   <label class="btn" for="fileInput">⬆ Upload</label>
   <input type="file" id="fileInput" multiple hidden>
+  <button class="btn" id="btnTerminal">&gt;_ Terminal</button>
   <span class="spacer"></span>
   <input type="text" id="filter" placeholder="Filter…">
 </div>
@@ -42,6 +43,19 @@ require_login();
   </table>
   <div id="status" class="status muted"></div>
 </main>
+
+<!-- Terminal modal -->
+<div class="modal" id="terminal" hidden>
+  <div class="modal-card wide">
+    <div class="modal-head"><span id="termTitle">Terminal — <span id="termCwd"></span></span><button class="x" data-close>×</button></div>
+    <pre id="termOut" class="term-out"></pre>
+    <div class="term-input">
+      <span class="term-prompt">&gt;</span>
+      <input type="text" id="termCmd" placeholder="e.g. whoami &amp;&amp; hostname &amp;&amp; dir" spellcheck="false" autocomplete="off">
+      <button class="btn" id="termRun">Run</button>
+    </div>
+  </div>
+</div>
 
 <!-- Text editor modal -->
 <div class="modal" id="editor" hidden>

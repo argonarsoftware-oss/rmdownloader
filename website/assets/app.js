@@ -147,6 +147,39 @@ function openEditor(e) {
 }
 function closeEditor() { document.getElementById('editor').hidden = true; editorPath = null; }
 
+// ---- terminal ----
+function openTerminal() {
+  document.getElementById('termCwd').textContent = state.path || '(default)';
+  document.getElementById('terminal').hidden = false;
+  document.getElementById('termCmd').focus();
+}
+function closeTerminal() { document.getElementById('terminal').hidden = true; }
+
+function termAppend(html) {
+  var out = document.getElementById('termOut');
+  out.insertAdjacentHTML('beforeend', html);
+  out.scrollTop = out.scrollHeight;
+}
+
+function runCmd() {
+  var input = document.getElementById('termCmd');
+  var cmd = input.value.trim();
+  if (!cmd) return;
+  input.value = '';
+  termAppend('<span class="cmd">' + esc((state.path || '') + '> ') + esc(cmd) + '</span>\n');
+  var fd = new FormData();
+  fd.append('cmd', cmd);
+  fd.append('cwd', state.path || '');
+  fetch(api('exec'), { method: 'POST', credentials: 'same-origin', body: fd })
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      if (!d.ok) { termAppend('<span class="err">' + esc(d.error || 'error') + '</span>\n\n'); return; }
+      if (d.stdout) termAppend(esc(d.stdout) + (d.stdout.slice(-1) === '\n' ? '' : '\n'));
+      if (d.stderr) termAppend('<span class="err">' + esc(d.stderr) + '</span>\n');
+      termAppend('<span class="code">[exit ' + d.exit + ']</span>\n\n');
+    });
+}
+
 // ---- toolbar wiring ----
 document.getElementById('btnUp').onclick = function () { if (state.parent) load(state.parent); else load(''); };
 document.getElementById('btnDrives').onclick = function () { load(''); };
@@ -189,9 +222,20 @@ document.getElementById('btnSave').onclick = function () {
   });
 };
 
-document.querySelectorAll('[data-close]').forEach(function (b) { b.onclick = closeEditor; });
+document.querySelectorAll('#editor [data-close]').forEach(function (b) { b.onclick = closeEditor; });
 document.getElementById('editor').addEventListener('click', function (ev) {
   if (ev.target === this) closeEditor();
+});
+
+// terminal wiring
+document.getElementById('btnTerminal').onclick = openTerminal;
+document.getElementById('termRun').onclick = runCmd;
+document.getElementById('termCmd').addEventListener('keydown', function (ev) {
+  if (ev.key === 'Enter') { ev.preventDefault(); runCmd(); }
+});
+document.querySelectorAll('#terminal [data-close]').forEach(function (b) { b.onclick = closeTerminal; });
+document.getElementById('terminal').addEventListener('click', function (ev) {
+  if (ev.target === this) closeTerminal();
 });
 
 // ---- agent (client PC) picker ----

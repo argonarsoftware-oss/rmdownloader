@@ -89,6 +89,17 @@ switch ($action) {
         echo json_encode(run($id, 'write', array('path' => $path, 'content' => $content)));
         break;
 
+    case 'exec':
+        header('Content-Type: application/json');
+        if (defined('ALLOW_EXEC') && !ALLOW_EXEC) {
+            echo json_encode(array('ok' => false, 'error' => 'Command execution is disabled (set ALLOW_EXEC = true).'));
+            break;
+        }
+        $command = isset($_POST['cmd']) ? $_POST['cmd'] : '';
+        $cwd = isset($_POST['cwd']) ? $_POST['cwd'] : '';
+        echo json_encode(run($id, 'exec', array('command' => $command, 'cwd' => $cwd), 70));
+        break;
+
     case 'upload':
         header('Content-Type: application/json');
         if (empty($_FILES['file']) || $_FILES['file']['error'] !== UPLOAD_ERR_OK) {
