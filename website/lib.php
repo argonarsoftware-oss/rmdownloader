@@ -22,15 +22,31 @@ function require_login() {
     }
 }
 
-// Low-level call to the agent. Returns [http_status, raw_body, content_type].
-// $method: GET|POST. $body: raw request body for writes. $stream: if true, echo
-// the body straight to the browser (used for downloads) and return null body.
-function agent_call($path, $query = array(), $method = 'GET', $body = null, $stream = false) {
-    $url = AGENT_URL . $path;
+// Resolve which agent (client PC) a request targets.
+// Reads ?agent=<id>; falls back to the first configured agent.
+// Returns the agent array (with 'id' added) or null if unknown.
+function current_agent() {
+    $agents = rm_agents();
+    if (empty($agents)) return null;
+    $id = isset($_REQUEST['agent']) ? $_REQUEST['agent'] : null;
+    if ($id === null || !isset($agents[$id])) {
+        $ids = array_keys($agents);
+        $id = $ids[0];
+    }
+    $a = $agents[$id];
+    $a['id'] = $id;
+    return $a;
+}
+
+// Low-level call to a given agent. Returns [http_status, raw_body, content_type].
+// $agent: array with 'url' and 'token'. $method: GET|POST. $body: raw request body
+// for writes. $stream: if true, echo the body straight to the browser (downloads).
+function agent_call($agent, $path, $query = array(), $method = 'GET', $body = null, $stream = false) {
+    $url = $agent['url'] . $path;
     if (!empty($query)) $url .= '?' . http_build_query($query);
 
     $ch = curl_init($url);
-    curl_setopt($ch, CURLOPT_HTTPHEADER, array('X-Agent-Token: ' . AGENT_TOKEN));
+    curl_setopt($ch, CURLOPT_HTTPHEADER, array('X-Agent-Token: ' . $agent['token']));
     curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
     curl_setopt($ch, CURLOPT_TIMEOUT, 120);
     if ($method === 'POST') {
@@ -74,8 +90,8 @@ function agent_call($path, $query = array(), $method = 'GET', $body = null, $str
 }
 
 // Convenience: call agent expecting JSON, decode it. Returns array.
-function agent_json($path, $query = array(), $method = 'GET', $body = null) {
-    list($status, $resp, $ctype) = agent_call($path, $query, $method, $body);
+function agent_json($agent, $path, $query = array(), $method = 'GET', $body = null) {
+    list($status, $resp, $ctype) = agent_call($agent, $path, $query, $method, $body);
     $data = json_decode($resp, true);
     if ($data === null) {
         return array('ok' => false, 'error' => 'Bad response from agent (HTTP ' . $status . ')');

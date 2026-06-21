@@ -13,6 +13,7 @@ require_login();
 <body>
 <header class="topbar">
   <div class="brand">🗂 Remote File Manager</div>
+  <select id="agentSel" class="agent-select" title="Client PC"></select>
   <div id="hostinfo" class="muted"></div>
   <div class="spacer"></div>
   <a class="btn ghost" href="logout.php">Sign out</a>

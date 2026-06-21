@@ -69,12 +69,14 @@ Copy `website\` into `C:\xampp\htdocs\filemanager`, then
 
 ### VPS (172.104.186.245, Apache, git clone)
 
+Public URL: **http://dos.argonar.co** (add an A record `dos.argonar.co → 172.104.186.245`).
+
 ```bash
 cd /var/www
 git clone https://github.com/argonarsoftware-oss/rmdownloader.git
 cd rmdownloader/website
 cp config.sample.php config.php
-nano config.php            # set AGENT_URL, AGENT_TOKEN, WEB_PASSWORD
+nano config.php            # set the rm_agents() list + WEB_PASSWORD
 ```
 
 Point Apache at `…/rmdownloader/website` (see `deploy/apache-vhost.conf`) and reload:
@@ -91,25 +93,70 @@ so it survives pulls).
 
 ---
 
-## Connecting the VPS to the agent
+## Autodeploy (push → live)
 
-The VPS must be able to reach the agent. Pick one:
+Every push to `main` triggers `.github/workflows/deploy.yml`, which SSHes into the VPS and
+runs `deploy/deploy.sh` (`git reset --hard origin/main` + reload Apache). `config.php` is
+git-ignored, so your secrets are never overwritten.
+
+**One-time setup:**
+
+1. On the VPS, do the initial clone + Apache setup (see "VPS" above) and make the script
+   runnable, and let the deploy user reload Apache without a password:
+   ```bash
+   chmod +x /var/www/rmdownloader/deploy/deploy.sh
+   echo "$USER ALL=(root) NOPASSWD: /bin/systemctl reload apache2, /bin/chown -R www-data\:www-data /var/www/rmdownloader/website" | sudo tee /etc/sudoers.d/rmdownloader
+   ```
+
+2. Add an SSH key the Action will use:
+   ```bash
+   ssh-keygen -t ed25519 -f ~/deploy_key -N ""
+   cat ~/deploy_key.pub >> ~/.ssh/authorized_keys   # on the VPS, for the deploy user
+   ```
+
+3. Register repo secrets (run locally where `gh` is logged in):
+   ```bash
+   gh secret set VPS_HOST   -b "172.104.186.245"      -R argonarsoftware-oss/rmdownloader
+   gh secret set VPS_USER   -b "<your-vps-user>"      -R argonarsoftware-oss/rmdownloader
+   gh secret set VPS_SSH_KEY < ~/deploy_key           -R argonarsoftware-oss/rmdownloader
+   # optional, if SSH is not on port 22:
+   gh secret set VPS_PORT   -b "22"                   -R argonarsoftware-oss/rmdownloader
+   ```
+
+Now `git push` deploys automatically. You can also run it on demand from the **Actions** tab
+("Run workflow"). No-CI fallback: a cron `*/5 * * * * /var/www/rmdownloader/deploy/deploy.sh`.
+
+---
+
+## Multiple client PCs
+
+The site manages many machines. List them in `rm_agents()` in `config.php`; each gets its
+own `url` + `token`, and the web UI shows a **PC picker** in the top bar. To add a PC:
+build/run `Agent.exe` on it, give it a unique token, make it reachable from the VPS
+(below), and add an entry to `rm_agents()`.
+
+## Connecting the VPS to each agent
+
+The VPS must be able to reach every agent. Pick one per machine:
 
 ### A. Reverse SSH tunnel (recommended — works behind home NAT, encrypted)
-On the Windows machine, keep a tunnel open to the VPS:
+On each Windows machine, keep a tunnel open to the VPS, using a **distinct VPS port per PC**:
 
 ```bash
+# PC1
 ssh -N -R 8765:127.0.0.1:8765 youruser@172.104.186.245
+# PC2 (run from the second machine)
+ssh -N -R 8766:127.0.0.1:8765 youruser@172.104.186.245
 ```
 
-Then on the agent use `host=127.0.0.1`, and on the VPS set
-`AGENT_URL = http://127.0.0.1:8765`. Nothing is exposed to the public internet.
-(Use `autossh` or a scheduled task to keep the tunnel alive.)
+Each agent uses `host=127.0.0.1`; in `rm_agents()` set that PC's `url` to the matching
+VPS port (`http://127.0.0.1:8765`, `http://127.0.0.1:8766`, …). Nothing is exposed to the
+public internet. Use `autossh` or a scheduled task to keep the tunnels alive.
 
 ### B. Direct / port-forwarded
-Set agent `host=0.0.0.0`, forward TCP 8765 to the Windows machine, and set
-`AGENT_URL = http://YOUR.PUBLIC.IP:8765` on the VPS. **Restrict the firewall so only
-172.104.186.245 can reach port 8765** (the token is the only auth and the hop is plain HTTP).
+Set agent `host=0.0.0.0`, forward its TCP port to the Windows machine, and set that PC's
+`url` to `http://YOUR.PUBLIC.IP:PORT`. **Restrict the firewall so only 172.104.186.245 can
+reach the port** (the token is the only auth and the hop is plain HTTP).
 
 ---
 

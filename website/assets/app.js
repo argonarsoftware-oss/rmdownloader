@@ -1,10 +1,11 @@
 // Front-end for the remote file manager. Talks only to api.php (same origin).
 'use strict';
 
-var state = { path: '', parent: null, entries: [] };
+var state = { agent: null, path: '', parent: null, entries: [] };
 
 function api(action, params) {
   var url = 'api.php?action=' + encodeURIComponent(action);
+  if (state.agent) url += '&agent=' + encodeURIComponent(state.agent);
   if (params) for (var k in params) url += '&' + encodeURIComponent(k) + '=' + encodeURIComponent(params[k]);
   return url;
 }
@@ -193,11 +194,32 @@ document.getElementById('editor').addEventListener('click', function (ev) {
   if (ev.target === this) closeEditor();
 });
 
+// ---- agent (client PC) picker ----
+function refreshHostInfo() {
+  getJSON('info').then(function (d) {
+    document.getElementById('hostinfo').textContent = d.ok
+      ? (d.host + ' · ' + d.user + (d.sandbox ? ' · sandbox: ' + d.sandbox : ''))
+      : '⚠ ' + (d.error || 'agent unreachable');
+  });
+}
+
+var agentSel = document.getElementById('agentSel');
+agentSel.onchange = function () {
+  state.agent = this.value;
+  refreshHostInfo();
+  load('');               // reset to drive list on the newly selected PC
+};
+
 // ---- boot ----
-getJSON('info').then(function (d) {
-  if (d.ok) {
-    document.getElementById('hostinfo').textContent =
-      d.host + ' · ' + d.user + (d.sandbox ? ' · sandbox: ' + d.sandbox : '');
-  }
+getJSON('agents').then(function (d) {
+  if (!d.ok || !d.agents.length) { setStatus('No agents configured in config.php.'); return; }
+  agentSel.innerHTML = '';
+  d.agents.forEach(function (a) {
+    var o = document.createElement('option');
+    o.value = a.id; o.textContent = a.name;
+    agentSel.appendChild(o);
+  });
+  state.agent = d.agents[0].id;
+  refreshHostInfo();
+  load('');
 });
-load('');

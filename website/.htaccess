@@ -1,0 +1,15 @@
+# Harden the web root (mirrors the argonarsoftware convention).
+Options -Indexes
+
+# Includes only — never serve these directly.
+<FilesMatch "^(config|config\.sample|lib)\.php$">
+    Require all denied
+</FilesMatch>
+
+# Don't expose docs / samples / configs as static files.
+<FilesMatch "\.(sample|conf|md|cs|bat|ps1)$">
+    Require all denied
+</FilesMatch>
+
+# Default landing page.
+DirectoryIndex index.php
