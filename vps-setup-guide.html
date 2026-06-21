@@ -81,9 +81,21 @@
   <h2><span class="n">2</span> Install Apache, PHP &amp; tools (on the VPS)</h2>
   <p>SSH into the VPS, then (Ubuntu/Debian):</p>
   <div class="code"><button class="copy">Copy</button><pre>sudo apt update
-sudo apt install -y apache2 php libapache2-mod-php php-curl git curl
+# Install only what's missing (skips anything already present):
+for pkg in apache2 php libapache2-mod-php php-curl git curl; do
+  if dpkg -s "$pkg" &gt;/dev/null 2&gt;&amp;1; then
+    echo "OK  $pkg already installed"
+  else
+    echo "..  installing $pkg"; sudo apt install -y "$pkg"
+  fi
+done
 sudo a2enmod rewrite headers
-php -v   # confirm PHP is installed</pre></div>
+
+# Verify versions:
+apache2 -v | head -1
+php -v | head -1
+git --version
+curl --version | head -1</pre></div>
   <div class="note">The site needs the <b>php-curl</b> extension — that's how the PHP proxy reaches the agent.</div>
 
   <h2><span class="n">3</span> Clone the repo into /var/www</h2>
