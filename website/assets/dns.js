@@ -95,10 +95,40 @@ function clearLog() {
     .then(function () { loadLog(); });
 }
 
+// ---- this machine's IP addresses (what clients point their DNS at) ----
+function loadIps() {
+  var el = document.getElementById('dnsIps');
+  el.textContent = 'detecting…';
+  var ps = "Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue | " +
+    "Where-Object { $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254.*' } | " +
+    "ForEach-Object { $_.IPAddress + '|' + $_.InterfaceAlias }";
+  execCmd(ps, 'powershell').then(function (d) {
+    var ips = (d.stdout || '').split(/\r?\n/).map(function (l) { return l.trim(); }).filter(Boolean);
+    if (!ips.length) { el.textContent = 'unknown'; return; }
+    el.innerHTML = '';
+    ips.forEach(function (line) {
+      var parts = line.split('|');
+      var ip = parts[0], alias = parts[1] || '';
+      var chip = document.createElement('span');
+      chip.className = 'ip-chip';
+      chip.title = 'Click to copy';
+      chip.innerHTML = '<b>' + esc(ip) + '</b>' + (alias ? ' <span class="muted">· ' + esc(alias) + '</span>' : '') + ' <span class="copy">⧉</span>';
+      chip.onclick = function () {
+        navigator.clipboard.writeText(ip).then(function () {
+          var c = chip.querySelector('.copy'); var old = c.textContent;
+          c.textContent = '✓ copied'; setTimeout(function () { c.textContent = old; }, 1200);
+        });
+      };
+      el.appendChild(chip);
+    });
+  });
+}
+
 function loadAll() {
   loadFile(blockPath(), 'blockText');
   loadFile(recPath(), 'recText');
   refreshStatus();
+  loadIps();
   loadLog();
 }
 

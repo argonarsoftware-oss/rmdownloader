@@ -38,6 +38,11 @@ $dnsTask = defined('DNS_TASK') ? DNS_TASK : 'TinyDNS';
   <button class="btn ghost" id="btnStatus">Refresh</button>
 </div>
 
+<div class="ipbar">
+  <span class="muted">Point other devices' DNS at this machine →</span>
+  <span id="dnsIps" class="ip-list muted">detecting…</span>
+</div>
+
 <main class="dns-main">
   <section class="dns-card">
     <div class="dns-head">🚫 Blocked sites <span class="muted">→ 0.0.0.0 · one domain per line · <code>*.x</code> for subdomains</span>

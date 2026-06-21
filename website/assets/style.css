@@ -73,6 +73,12 @@ tr:hover .row-act{visibility:visible}
 
 /* DNS manager */
 .pill{display:inline-block;background:#0c0e14;border:1px solid var(--line);border-radius:20px;padding:5px 12px;font-size:13px}
+.ipbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 16px;border-bottom:1px solid var(--line);background:#12151d}
+.ip-list{display:inline-flex;gap:8px;flex-wrap:wrap}
+.ip-chip{cursor:pointer;background:#0c0e14;border:1px solid var(--line);border-radius:7px;padding:5px 10px;
+  font:13px/1 Consolas,Menlo,monospace;color:var(--text);display:inline-flex;align-items:center;gap:6px}
+.ip-chip:hover{border-color:var(--accent)}
+.ip-chip .copy{color:var(--muted)}
 .dns-main{padding:14px;display:flex;flex-direction:column;gap:14px}
 .dns-card{background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden}
 .dns-head{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--line);font-weight:600;flex-wrap:wrap}
