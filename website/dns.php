@@ -51,9 +51,9 @@ $dnsTask = defined('DNS_TASK') ? DNS_TASK : 'TinyDNS';
   </section>
 
   <section class="dns-card">
-    <div class="dns-head">🧭 Custom routing <span class="muted">domain &nbsp;IP &nbsp;(records.txt) · <code>*.x</code> wildcard</span>
+    <div class="dns-head">🧭 Custom routing <span class="muted">domain &nbsp;→ &nbsp;IP <i>or</i> another domain (records.txt) · <code>*.x</code> wildcard · e.g. <code>youtube.com&nbsp;&nbsp;facebook.com</code></span>
       <span class="spacer"></span><button class="btn" id="saveRec">Save</button></div>
-    <textarea id="recText" class="dns-edit" spellcheck="false" placeholder="example.local   192.168.1.10&#10;*.dev.local     10.0.0.50"></textarea>
+    <textarea id="recText" class="dns-edit" spellcheck="false" placeholder="example.local   192.168.1.10&#10;youtube.com     facebook.com&#10;*.dev.local     10.0.0.50"></textarea>
   </section>
 
   <section class="dns-card">

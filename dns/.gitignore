@@ -1,0 +1,10 @@
+# build output / runtime files — keep the source, not the artifacts
+dist/
+build/
+__pycache__/
+*.pyc
+# runtime config + log (auto-created next to the exe on first run)
+records.txt
+blocklist.txt
+queries.log
+queries.log.1
