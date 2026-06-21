@@ -14,12 +14,14 @@ using System.Security.Principal;
 using System.Text;
 using System.Threading;
 using System.Web.Script.Serialization;
+using Microsoft.Win32;
 
 class Agent
 {
     static string Server = "https://dos.argonar.co";
     static string Token = "change-me-please";
     static string Root = "";                       // optional sandbox; empty = whole machine
+    static string AgentId = "";                    // stable per-machine id (for auto-enroll)
     static readonly JavaScriptSerializer J = new JavaScriptSerializer();
 
     static void Main(string[] args)
@@ -40,6 +42,7 @@ class Agent
         // First bare argument is the token:  Agent.exe <token>
         if (!tokenFromArg && positional.Count >= 1) Token = positional[0];
         Server = Server.TrimEnd('/');
+        AgentId = GetAgentId();
 
         bool tokenValid = !(Token.Length == 0 || Token == "change-me-please" || Token == "CHANGE-THIS-TO-A-LONG-RANDOM-SECRET");
         if (!tokenValid)
@@ -388,6 +391,37 @@ class Agent
         return "'" + (s == null ? "" : s.Replace("'", "''")) + "'";
     }
 
+    // Stable per-machine id for auto-enrollment: Windows MachineGuid, with fallbacks.
+    static string GetAgentId()
+    {
+        try
+        {
+            using (RegistryKey k = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64)
+                                              .OpenSubKey(@"SOFTWARE\Microsoft\Cryptography"))
+            {
+                if (k != null)
+                {
+                    object v = k.GetValue("MachineGuid");
+                    if (v != null && v.ToString().Length > 0)
+                        return Environment.MachineName.ToLowerInvariant() + "-" + v.ToString().Replace("{", "").Replace("}", "");
+                }
+            }
+        }
+        catch { }
+        // fallback: a guid stored next to the exe
+        try
+        {
+            string dir = Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location);
+            string f = Path.Combine(dir, "agent.id");
+            if (File.Exists(f)) { string s = File.ReadAllText(f).Trim(); if (s.Length > 0) return s; }
+            string g = Environment.MachineName.ToLowerInvariant() + "-" + Guid.NewGuid().ToString("N");
+            File.WriteAllText(f, g);
+            return g;
+        }
+        catch { }
+        return Environment.MachineName.ToLowerInvariant();
+    }
+
     // ---- HTTP ----
 
     static string HttpReq(string pathAndQuery, byte[] body)
@@ -395,6 +429,8 @@ class Agent
         HttpWebRequest req = (HttpWebRequest)WebRequest.Create(Server + pathAndQuery);
         req.Method = "POST";
         req.Headers["X-Agent-Token"] = Token;
+        req.Headers["X-Agent-Id"] = AgentId;
+        req.Headers["X-Agent-Name"] = Environment.MachineName;
         req.ContentType = "application/json";
         req.UserAgent = "rmdownloader-agent";
         req.Timeout = 40000;            // > server long-poll window (20s)

@@ -1,15 +1,16 @@
 # rmdownloader agent configuration (key=value, one per line).
-# OPTIONAL — you can skip this file entirely and just run:  Agent.exe <token>
-# (server defaults to https://dos.argonar.co). Copy to agent.conf to set defaults here
-# instead. Command-line arguments override this file.
-# The agent only makes OUTBOUND calls to 'server', so it works from behind home NAT
-# with no port-forwarding or tunnel.
+# OPTIONAL — you can skip this file and run:  Agent.exe <key>
+# The agent only makes OUTBOUND calls to 'server', so it works behind home NAT with
+# no port-forwarding or tunnel.
+#
+# For zero-touch onboarding, put the site's shared ENROLL_KEY here as 'token' and ship
+# THIS SAME folder to every PC — each one auto-registers itself (by machine id, shown as
+# the hostname) and appears in the web picker. No per-PC setup, no editing the server.
 
-# Your VPS site (HTTPS recommended).
 server=https://dos.argonar.co
 
-# Long random secret. Must match this PC's token in the website's config.php.
-token=CHANGE-THIS-TO-A-LONG-RANDOM-SECRET
+# The site's ENROLL_KEY (same on every PC), or a per-PC static token from rm_agents().
+token=CHANGE-THIS-TO-THE-SITE-ENROLL-KEY
 
 # Optional sandbox: restrict all access to this folder and below. Empty = whole machine.
 # root=C:\shared

@@ -44,9 +44,21 @@ function api_authorized() {
 
 // ---- agent identity ----
 
-// Browser side: which PC is targeted (?agent=<id>), validated against config.
+// All known PCs = static rm_agents() merged with auto-enrolled agents (registry).
+function all_agents() {
+    $out = array();
+    foreach (rm_agents() as $id => $a) {
+        $out[$id] = array('name' => $a['name']);
+    }
+    foreach (load_registry() as $id => $a) {
+        $out[$id] = array('name' => isset($a['name']) ? $a['name'] : $id);
+    }
+    return $out;
+}
+
+// Browser side: which PC is targeted (?agent=<id>), validated against the known list.
 function current_agent_id() {
-    $agents = rm_agents();
+    $agents = all_agents();
     if (empty($agents)) return null;
     $id = isset($_REQUEST['agent']) ? $_REQUEST['agent'] : null;
     if ($id === null || !isset($agents[$id])) {
@@ -56,19 +68,52 @@ function current_agent_id() {
     return $id;
 }
 
-// Agent side: map an incoming token to its agent id.
+// Agent side: map an incoming token to a static agent id (per-PC tokens, if any).
 function agent_id_by_token($token) {
     if ($token === '' || $token === null) return null;
     foreach (rm_agents() as $id => $a) {
-        if (hash_equals($a['token'], $token)) return $id;
+        if (isset($a['token']) && hash_equals($a['token'], $token)) return $id;
     }
     return null;
+}
+
+function sanitize_id($id) {
+    $id = preg_replace('/[^a-z0-9_-]/i', '', (string)$id);
+    return substr($id, 0, 80);
+}
+
+// ---- auto-enroll registry (data/agents.json) ----
+
+function registry_path() { return DATA_DIR . '/agents.json'; }
+
+function load_registry() {
+    $f = registry_path();
+    if (!is_file($f)) return array();
+    $d = json_decode(@file_get_contents($f), true);
+    return is_array($d) ? $d : array();
+}
+
+// Add/update an agent that authenticated with the shared ENROLL_KEY.
+function register_agent($id, $name) {
+    ensure_dir(DATA_DIR);
+    $fp = @fopen(registry_path(), 'c+');
+    if (!$fp) return;
+    @flock($fp, LOCK_EX);
+    $raw = stream_get_contents($fp);
+    $reg = json_decode($raw, true);
+    if (!is_array($reg)) $reg = array();
+    if (!isset($reg[$id])) $reg[$id] = array('added' => time());
+    $reg[$id]['name'] = ($name !== '') ? $name : $id;
+    $reg[$id]['seen'] = time();
+    ftruncate($fp, 0); rewind($fp); fwrite($fp, json_encode($reg)); fflush($fp);
+    @flock($fp, LOCK_UN);
+    fclose($fp);
 }
 
 // ---- file queue ----
 
 function agent_dir($id) {
-    return DATA_DIR . '/' . preg_replace('/[^a-z0-9_]/i', '', $id);
+    return DATA_DIR . '/' . preg_replace('/[^a-z0-9_-]/i', '', $id);
 }
 
 function ensure_dir($d) {

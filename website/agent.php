@@ -7,7 +7,17 @@ require_once __DIR__ . '/lib.php';
 header('Content-Type: application/json');
 
 $token = isset($_SERVER['HTTP_X_AGENT_TOKEN']) ? $_SERVER['HTTP_X_AGENT_TOKEN'] : '';
+
+// 1) static per-PC token (rm_agents), or 2) shared ENROLL_KEY -> auto-enroll by machine id.
 $id = agent_id_by_token($token);
+if ($id === null && defined('ENROLL_KEY') && ENROLL_KEY !== '' && hash_equals(ENROLL_KEY, $token)) {
+    $rawId = isset($_SERVER['HTTP_X_AGENT_ID']) ? $_SERVER['HTTP_X_AGENT_ID'] : '';
+    $id = sanitize_id($rawId);
+    if ($id === '') $id = 'pc-' . substr(md5($token . (isset($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] : '')), 0, 10);
+    $name = isset($_SERVER['HTTP_X_AGENT_NAME']) ? $_SERVER['HTTP_X_AGENT_NAME'] : $id;
+    $name = trim(preg_replace('/[^\w .\-]/', '', $name));
+    register_agent($id, $name);
+}
 if ($id === null) {
     http_response_code(401);
     echo json_encode(array('ok' => false, 'error' => 'unauthorized'));

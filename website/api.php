@@ -21,7 +21,7 @@ $action = isset($_GET['action']) ? $_GET['action'] : '';
 if ($action === 'agents') {
     header('Content-Type: application/json');
     $out = array();
-    foreach (rm_agents() as $id => $a) {
+    foreach (all_agents() as $id => $a) {
         $out[] = array('id' => $id, 'name' => $a['name'], 'online' => is_online($id));
     }
     echo json_encode(array('ok' => true, 'agents' => $out));

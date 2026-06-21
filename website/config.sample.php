@@ -3,17 +3,22 @@
 // On the VPS:  cp config.sample.php config.php   then edit config.php.
 // config.php is git-ignored so secrets are never committed and survive `git pull`.
 
-// ---- Agents (the client PCs you manage) ----
-// One entry per machine. The agent reverse-connects to this site using its token;
-// you do NOT set any URL or port per PC. The token maps the connection to its id.
-//   id    = array key (short, [a-z0-9_])
-//   name  = label shown in the PC picker
-//   token = must match the "token" in that machine's agent.conf
+// ---- Auto-enroll (zero-touch onboarding) ----
+// Set ONE shared key here and put the same value as the token in the agent bundle's
+// agent.conf. Then just copy the agent to any PC and run it — it auto-registers itself
+// (by machine id, shown as the hostname) and appears in the PC picker. No per-PC config,
+// no editing this file again.
+//   Security: only someone with this key can register an agent, and an agent can only
+//   expose its OWN machine. Use a long random value and keep the site on HTTPS.
+//   Leave '' to disable auto-enroll (then use the static rm_agents() list below).
+define('ENROLL_KEY', 'CHANGE-THIS-TO-A-LONG-RANDOM-ENROLL-KEY');
+
+// ---- Static agents (optional) ----
+// Pin specific PCs with their own per-PC token (alternative to auto-enroll). Can be empty.
+//   id => array('name' => label, 'token' => that PC's agent token)
 function rm_agents() {
     return array(
-        'pc1' => array('name' => 'Main PC',   'token' => 'CHANGE-THIS-TO-A-LONG-RANDOM-SECRET-1'),
-        'pc2' => array('name' => 'Office PC', 'token' => 'CHANGE-THIS-TO-A-LONG-RANDOM-SECRET-2'),
-        // Add more PCs here...
+        // 'pc1' => array('name' => 'Main PC', 'token' => 'a-per-pc-token'),
     );
 }
 
