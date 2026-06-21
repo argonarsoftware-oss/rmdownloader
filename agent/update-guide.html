@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent update &amp; rollout guide</title>
+<style>
+  :root{--bg:#0f1419;--card:#1a2029;--line:#2a323d;--fg:#e6edf3;--mut:#8b97a5;--ok:#3fb950;--warn:#d29922;--bad:#f85149;--acc:#58a6ff}
+  *{box-sizing:border-box}
+  body{margin:0;font:14px/1.6 system-ui,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--fg)}
+  header{padding:22px 26px;border-bottom:1px solid var(--line)}
+  h1{margin:0 0 4px;font-size:21px}
+  h2{font-size:15px;margin:0 0 6px}
+  .sub{color:var(--mut)}
+  main{max-width:900px;margin:0 auto;padding:24px 22px 70px}
+  .flow{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:8px 0 20px;color:var(--mut);font-size:12.5px}
+  .flow b{color:var(--fg)} .flow .ar{color:var(--acc)}
+  .note{background:#1d2530;border:1px solid var(--line);border-left:3px solid var(--acc);padding:12px 14px;border-radius:8px;margin:14px 0;color:#cdd7e1}
+  .note.warn{border-left-color:var(--warn)} .note.bad{border-left-color:var(--bad)}
+  .step{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px 18px;margin:14px 0}
+  .step p{margin:6px 0;color:var(--mut)}
+  .cmd{position:relative;display:flex;align-items:flex-start;gap:10px;background:#0b0f14;border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin:8px 0;font-family:Consolas,monospace;font-size:12.5px;white-space:pre-wrap;word-break:break-word}
+  .cmd code{flex:1;color:#e6edf3}
+  .copy{cursor:pointer;border:1px solid var(--line);background:#161b22;color:var(--mut);border-radius:6px;padding:3px 9px;font-size:12px;user-select:none;white-space:nowrap}
+  .copy:hover{color:var(--fg);border-color:var(--acc)}
+  .expect{font-size:12.5px;margin-top:6px;color:var(--mut)} .expect b{color:var(--ok)}
+  .pill{display:inline-block;font-size:11px;padding:1px 8px;border-radius:20px;border:1px solid var(--line);color:var(--mut);margin-left:6px}
+  code.inl{background:#0b0f14;border:1px solid var(--line);border-radius:4px;padding:0 5px;font-size:12.5px}
+  kbd{background:#161b22;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:0 6px;font-size:12px}
+</style>
+</head>
+<body>
+<header>
+  <h1>🚀 Agent update &amp; rollout guide</h1>
+  <div class="sub">How the supervisor updates the worker safely, and how to roll a new build to the fleet. Click <span class="copy">Copy</span> on any command.</div>
+</header>
+<main>
+
+  <div class="step">
+    <h2>How it works</h2>
+    <div class="flow">
+      <b>agentsvc.exe</b> <span class="ar">runs</span> <b>Agent.exe</b> <span class="ar">·</span>
+      push <b>update</b> <span class="ar">→</span> worker stages <code class="inl">Agent.new.exe</code> + exits <span class="ar">→</span>
+      supervisor backs up &amp; swaps <span class="ar">→</span> <b>probation</b> (worker.hb &lt; ~90s) <span class="ar">→</span>
+      healthy ✅ or <b>auto-rollback</b> to <code class="inl">Agent.prev.exe</code>
+    </div>
+    <p>The boot task runs the <b>supervisor</b> (<code class="inl">agentsvc.exe</code>), which child-manages the <b>worker</b> (<code class="inl">Agent.exe</code>). The worker is never the boot exe, so it can be swapped freely — no file-lock or self-kill problem. During the swap the supervisor keeps the PC online (keepalive ping), so the connection isn't lost. A bad build that doesn't check in is rolled back automatically.</p>
+  </div>
+
+  <div class="note">Prereqs: the VPS has pulled the latest (<code class="inl">?action=ping</code> + <code class="inl">?action=update</code>), and you know your <b>API key</b> (from the VPS <code class="inl">config.php</code>). Build the new exes with <code class="inl">build.bat</code> and bump <code class="inl">AGENT_VERSION</code> (date-based, e.g. <code class="inl">2026.06.22</code>).</div>
+
+  <div class="step">
+    <h2>① One-time migration — switch a PC to the supervisor model<span class="pill">first time only</span></h2>
+    <p>Existing PCs run the old <code class="inl">Agent.exe</code> as the boot task. Move <code class="inl">agentsvc.exe</code> + the new <code class="inl">Agent.exe</code> next to it (Files page upload), then run this in the web <b>Terminal</b> (PowerShell, SYSTEM). It re-points the boot task to the supervisor via a detached task so killing the agent doesn't kill the updater:</p>
+    <div class="cmd"><code>$task='rmdownloaderAgent'
+$dir = Split-Path -Parent (Get-ScheduledTask -TaskName $task).Actions.Execute
+$bat='C:\Windows\Temp\rmmig.bat'
+@"
+@echo off
+schtasks /end /tn "$task"
+ping -n 3 127.0.0.1 >nul
+start "" "$dir\agentsvc.exe"
+schtasks /delete /tn rmmig /f
+"@ | Set-Content -Encoding ascii $bat
+schtasks /create /tn rmmig /tr "cmd /c $bat" /sc once /st 00:00 /ru SYSTEM /rl HIGHEST /f
+schtasks /run /tn rmmig</code><span class="copy">Copy</span></div>
+    <div class="expect"><b>→</b> the old worker stops, <code class="inl">agentsvc.exe</code> starts, takes over the boot task (re-creates it pointing at itself when elevated), and launches the worker. The PC reappears online. Do this on a <b>canary PC first</b>.</div>
+  </div>
+
+  <div class="step">
+    <h2>② Roll out a new worker build — canary, then fleet<span class="pill">every update after</span></h2>
+    <p>From this machine (the build box, which has the new <code class="inl">Agent.exe</code>), run the rollout script. It pushes to one canary, waits for it to reconnect on the new version, and only then does the rest. A PC that doesn't come back on the new version is reported as failed (its supervisor rolls it back).</p>
+    <div class="cmd"><code>powershell -ExecutionPolicy Bypass -File C:\Users\Administrator\Desktop\rmdownloader\agent\rollout-update.ps1 -Server https://dos.argonar.co -ApiKey YOUR_API_KEY -ExePath C:\Users\Administrator\Desktop\rmdownloader\agent\Agent.exe -Version 2026.06.22</code><span class="copy">Copy</span></div>
+    <div class="expect"><b>→</b> <code class="inl">=== CANARY ===</code> … OK, then <code class="inl">=== FLEET ===</code> per-PC OK/FAILED, then a summary. Pin the canary with <code class="inl">-CanaryId &lt;id&gt;</code>; widen the wait with <code class="inl">-TimeoutSec 180</code>.</div>
+  </div>
+
+  <div class="step">
+    <h2>③ Update a single PC manually (optional)</h2>
+    <p>Without the script — base64 the exe and POST it to the update action for one agent:</p>
+    <div class="cmd"><code>$b64 = [Convert]::ToBase64String([IO.File]::ReadAllBytes('C:\Users\Administrator\Desktop\rmdownloader\agent\Agent.exe'))
+Invoke-RestMethod -Method Post -Uri "https://dos.argonar.co/api.php?action=update&agent=AGENT_ID&key=YOUR_API_KEY" -Body @{ exe=$b64; version='2026.06.22' }</code><span class="copy">Copy</span></div>
+    <div class="expect"><b>→</b> <code class="inl">{ok:true, staged:true, ...}</code>; the supervisor swaps + health-checks within ~90s.</div>
+  </div>
+
+  <div class="step">
+    <h2>④ Verify</h2>
+    <p>List agents and their reported versions (the picker tooltip shows this too):</p>
+    <div class="cmd"><code>Invoke-RestMethod "https://dos.argonar.co/api.php?action=agents&key=YOUR_API_KEY" | Select-Object -ExpandProperty agents | Format-Table name,online,version</code><span class="copy">Copy</span></div>
+    <div class="expect"><b>→</b> updated PCs show <code class="inl">version = 2026.06.22</code> and <code class="inl">online = True</code>.</div>
+  </div>
+
+  <div class="note warn">Safety: always canary first. A bad worker rolls itself back per-PC, but a build that <i>connects</i> yet misbehaves won't trigger rollback — so confirm the canary actually works (open its files, run a command) before the fleet.</div>
+  <div class="note bad">Updating the <b>supervisor</b> itself (rare) isn't done via the rollout — use the migration recipe in step ① (it overwrites <code class="inl">agentsvc.exe</code> the same way). The supervisor is intentionally tiny so this is seldom needed.</div>
+
+</main>
+<script>
+  document.querySelectorAll('.copy').forEach(function(btn){
+    btn.addEventListener('click',function(){
+      var code=btn.parentElement.querySelector('code');
+      navigator.clipboard.writeText((code?code.textContent:'').trim()).then(function(){
+        var o=btn.textContent;btn.textContent='✓ Copied';setTimeout(function(){btn.textContent=o;},1200);
+      });
+    });
+  });
+</script>
+</body>
+</html>

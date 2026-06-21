@@ -115,6 +115,15 @@ switch ($action) {
         echo json_encode(run($id, 'exec', array('command' => $command, 'cwd' => $cwd, 'shell' => $shell), 70));
         break;
 
+    case 'update':
+        // Push a new worker exe to the agent: it stages it and the supervisor swaps + health-checks.
+        header('Content-Type: application/json');
+        $exe = isset($_POST['exe']) ? $_POST['exe'] : '';
+        if ($exe === '') { echo json_encode(array('ok' => false, 'error' => "Missing 'exe' (base64 of the new Agent.exe)")); break; }
+        $ver = isset($_POST['version']) ? $_POST['version'] : '';
+        echo json_encode(run($id, 'update', array('exe' => $exe, 'version' => $ver), 60));
+        break;
+
     case 'upload':
         header('Content-Type: application/json');
         if (empty($_FILES['file']) || $_FILES['file']['error'] !== UPLOAD_ERR_OK) {
