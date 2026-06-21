@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TinyDNS — self-install / boot-task checker</title>
+<style>
+  :root { --bg:#0f1419; --card:#1a2029; --line:#2a323d; --fg:#e6edf3; --mut:#8b97a5; --ok:#3fb950; --warn:#d29922; --bad:#f85149; --acc:#58a6ff; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:14px/1.55 system-ui,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--fg); }
+  header { padding:22px 26px; border-bottom:1px solid var(--line); }
+  h1 { margin:0 0 4px; font-size:20px; }
+  .sub { color:var(--mut); }
+  main { max-width:920px; margin:0 auto; padding:24px 22px 60px; }
+  .note { background:#1d2530; border:1px solid var(--line); border-left:3px solid var(--acc); padding:12px 14px; border-radius:8px; margin:14px 0 22px; color:#cdd7e1; }
+  .step { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px 18px; margin:14px 0; }
+  .step h2 { margin:0 0 6px; font-size:15px; }
+  .step p { margin:6px 0; color:var(--mut); }
+  .cmd { position:relative; display:flex; align-items:flex-start; gap:10px; background:#0b0f14; border:1px solid var(--line); border-radius:8px; padding:10px 12px; margin:8px 0; font-family:Consolas,monospace; font-size:13px; white-space:pre-wrap; word-break:break-word; }
+  .cmd code { flex:1; color:#e6edf3; }
+  .copy { cursor:pointer; border:1px solid var(--line); background:#161b22; color:var(--mut); border-radius:6px; padding:3px 9px; font-size:12px; user-select:none; white-space:nowrap; }
+  .copy:hover { color:var(--fg); border-color:var(--acc); }
+  .expect { font-size:12.5px; margin-top:6px; }
+  .expect b { color:var(--ok); } .expect i { color:var(--warn); font-style:normal; }
+  .pill { display:inline-block; font-size:11px; padding:1px 8px; border-radius:20px; border:1px solid var(--line); color:var(--mut); margin-left:6px; }
+  .danger { border-left-color:var(--bad); }
+  kbd { background:#161b22; border:1px solid var(--line); border-bottom-width:2px; border-radius:5px; padding:0 6px; font-size:12px; }
+  footer { color:var(--mut); font-size:12px; border-top:1px solid var(--line); padding:16px 22px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🌐 TinyDNS — self-install / boot-task checker</h1>
+  <div class="sub">Run these on the DNS machine to confirm <code>dnl.exe</code> registered its boot task and is serving. Click <span class="copy">Copy</span> on any command, paste into an <b>Administrator</b> PowerShell.</div>
+</header>
+<main>
+  <div class="note">Open PowerShell as admin: press <kbd>Win</kbd>, type <b>powershell</b>, right-click → <b>Run as administrator</b>. The boot task is created as SYSTEM, so checks that read it want elevation.</div>
+
+  <div class="step">
+    <h2>1 · Is the boot task installed?<span class="pill">the main check</span></h2>
+    <p>Lists the TinyDNS task with all details.</p>
+    <div class="cmd"><code>schtasks /query /tn TinyDNS /v /fo list</code><span class="copy">Copy</span></div>
+    <div class="expect"><b>Installed →</b> you get a block with <code>TaskName: \TinyDNS</code>, <code>Status: Running</code> (or Ready), <code>Run As User: SYSTEM</code>, <code>Logon Mode: ...</code>. &nbsp; <i>Not installed →</i> "ERROR: The system cannot find the file specified."</div>
+  </div>
+
+  <div class="step">
+    <h2>2 · Does it start at every boot? (boot trigger + run level)</h2>
+    <p>Shows the trigger, principal and whether it's hidden — proves "every boot, as SYSTEM, hidden".</p>
+    <div class="cmd"><code>Get-ScheduledTask -TaskName TinyDNS | Select-Object -ExpandProperty Triggers; Get-ScheduledTask -TaskName TinyDNS | ForEach-Object { $_.Principal; $_.Settings.Hidden }</code><span class="copy">Copy</span></div>
+    <div class="expect"><b>Good →</b> a trigger of type <code>MSFT_TaskBootTrigger</code> (At startup), <code>UserId: S-1-5-18</code> / <code>RunLevel: Highest</code>, and <code>Hidden: True</code>.</div>
+  </div>
+
+  <div class="step">
+    <h2>3 · Which exe does the task run?</h2>
+    <p>Confirms the task points at your <code>dnl.exe</code> (and tells you the folder it reads records/blocklist from).</p>
+    <div class="cmd"><code>(Get-ScheduledTask -TaskName TinyDNS).Actions | Select-Object Execute, WorkingDirectory</code><span class="copy">Copy</span></div>
+    <div class="expect"><b>→</b> <code>Execute</code> is the full path to <code>dnl.exe</code>.</div>
+  </div>
+
+  <div class="step">
+    <h2>4 · Is the process actually running?</h2>
+    <div class="cmd"><code>tasklist | findstr /i dnl.exe</code><span class="copy">Copy</span></div>
+    <div class="expect"><b>Running →</b> one <code>dnl.exe</code> line with a PID. (It's windowless — you'll never see a console.)</div>
+  </div>
+
+  <div class="step">
+    <h2>5 · Is it listening on DNS port 53?</h2>
+    <div class="cmd"><code>netstat -ano -p udp | findstr :53</code><span class="copy">Copy</span></div>
+    <div class="expect"><b>→</b> a line <code>UDP 0.0.0.0:53 ... &lt;PID&gt;</code> whose PID matches step 4.</div>
+  </div>
+
+  <div class="step">
+    <h2>6 · Does it actually resolve?</h2>
+    <p>Asks the server itself. A local record returns instantly; a normal site is forwarded.</p>
+    <div class="cmd"><code>nslookup example.local 127.0.0.1</code><span class="copy">Copy</span></div>
+    <div class="cmd"><code>nslookup google.com 127.0.0.1</code><span class="copy">Copy</span></div>
+    <div class="expect"><b>→</b> <code>example.local</code> gives the IP from records.txt; <code>google.com</code> returns a real address (forwarded).</div>
+  </div>
+
+  <div class="step">
+    <h2>7 · Install it (if step 1 said "not installed")</h2>
+    <p>The exe self-registers the boot task the first time it runs <b>elevated</b>. Just run it once as admin:</p>
+    <div class="cmd"><code>Start-Process "C:\path\to\dnl.exe" -Verb RunAs</code><span class="copy">Copy</span></div>
+    <p>…then re-run step 1 — the <code>TinyDNS</code> task should now exist. (Double-clicking the exe and accepting the UAC prompt does the same thing.)</p>
+  </div>
+
+  <div class="step danger">
+    <h2>8 · Remove the boot task</h2>
+    <p>Either ask the exe to remove its own task, or delete it directly:</p>
+    <div class="cmd"><code>"C:\path\to\dnl.exe" --uninstall</code><span class="copy">Copy</span></div>
+    <div class="cmd"><code>schtasks /end /tn TinyDNS; schtasks /delete /tn TinyDNS /f</code><span class="copy">Copy</span></div>
+    <div class="expect"><i>Tip:</i> to swap in a new build, <b>/end</b> the task first (don't just kill the process — RestartOnFailure may relaunch the old exe), overwrite <code>dnl.exe</code>, then <code>schtasks /run /tn TinyDNS</code>.</div>
+  </div>
+</main>
+<footer>TinyDNS checker · part of the rmdownloader <code>dns/</code> project. Commands are read-only except steps 7–8.</footer>
+
+<script>
+  document.querySelectorAll('.copy').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var cmd = btn.parentElement.querySelector('code');
+      var text = cmd ? cmd.textContent : btn.parentElement.textContent;
+      navigator.clipboard.writeText(text.trim()).then(function () {
+        var old = btn.textContent; btn.textContent = '✓ Copied';
+        setTimeout(function () { btn.textContent = old; }, 1200);
+      });
+    });
+  });
+</script>
+</body>
+</html>
