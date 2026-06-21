@@ -126,7 +126,7 @@ class Agent
             case "mkdir":    return DoMkdir(Str(cmd, "path"));
             case "delete":   return DoDelete(Str(cmd, "path"));
             case "rename":   return DoRename(Str(cmd, "path"), Str(cmd, "newName"));
-            case "exec":     return DoExec(Str(cmd, "command"), Str(cmd, "cwd"));
+            case "exec":     return DoExec(Str(cmd, "command"), Str(cmd, "cwd"), Str(cmd, "shell"));
             default:         return Err("unknown op: " + op);
         }
     }
@@ -288,37 +288,104 @@ class Agent
         var r = Ok(); r["path"] = dest; return r;
     }
 
-    static Dictionary<string, object> DoExec(string command, string cwd)
+    // Stateful shells: the working directory persists between commands (like a real terminal),
+    // tracked per shell ("cmd" / "powershell"). Each command runs in that dir and reports the new cwd.
+    static readonly object ExecLock = new object();
+    static readonly Dictionary<string, string> ShellCwds = new Dictionary<string, string>();
+
+    static Dictionary<string, object> DoExec(string command, string cwdHint, string shell)
     {
-        if (string.IsNullOrEmpty(command)) return Err("command required");
-        ProcessStartInfo psi = new ProcessStartInfo("cmd.exe", "/c " + command);
-        psi.UseShellExecute = false;
-        psi.CreateNoWindow = true;
-        psi.RedirectStandardOutput = true;
-        psi.RedirectStandardError = true;
-        psi.StandardOutputEncoding = Encoding.UTF8;
-        psi.StandardErrorEncoding = Encoding.UTF8;
-        if (!string.IsNullOrEmpty(cwd) && Directory.Exists(cwd)) psi.WorkingDirectory = cwd;
-        else if (Root.Length > 0 && Directory.Exists(Root)) psi.WorkingDirectory = Root;
+        lock (ExecLock)
+        {
+            shell = (shell == "powershell" || shell == "pwsh") ? "powershell" : "cmd";
+            string cwd;
+            ShellCwds.TryGetValue(shell, out cwd);
+            if (string.IsNullOrEmpty(cwd) || !Directory.Exists(cwd))
+                cwd = (!string.IsNullOrEmpty(cwdHint) && Directory.Exists(cwdHint)) ? cwdHint
+                    : (Root.Length > 0 && Directory.Exists(Root)) ? Root : "C:\\";
 
-        Process p = Process.Start(psi);
-        // Read stderr on a separate thread so neither pipe can deadlock.
-        string err = "";
-        Thread te = new Thread(delegate() { try { err = p.StandardError.ReadToEnd(); } catch { } });
-        te.Start();
-        string outp = p.StandardOutput.ReadToEnd();
-        te.Join(3000);
-        if (!p.WaitForExit(60000)) { try { p.Kill(); } catch { } return Err("command timed out (60s)"); }
+            // Empty command = just report the prompt (used when the terminal opens).
+            if (string.IsNullOrEmpty(command))
+            {
+                ShellCwds[shell] = cwd;
+                Dictionary<string, object> r0 = Ok();
+                r0["exit"] = 0; r0["stdout"] = ""; r0["stderr"] = ""; r0["cwd"] = cwd; r0["shell"] = shell;
+                return r0;
+            }
 
-        const int cap = 200 * 1024;
-        if (outp.Length > cap) outp = outp.Substring(0, cap) + "\n...[truncated]";
-        if (err.Length > cap) err = err.Substring(0, cap) + "\n...[truncated]";
+            string mark = "__RMEND_" + Guid.NewGuid().ToString("N") + "__";
+            ProcessStartInfo psi;
+            if (shell == "powershell")
+            {
+                // Build a script and pass it Base64-encoded (UTF-16LE) so user quoting never breaks.
+                string script =
+                    "Set-Location -LiteralPath " + PsLit(cwd) + "; " +
+                    command + "; " +
+                    "Write-Output ('" + mark + "' + [string]$LASTEXITCODE); " +
+                    "Write-Output ((Get-Location).Path)";
+                string enc = Convert.ToBase64String(Encoding.Unicode.GetBytes(script));
+                psi = new ProcessStartInfo("powershell.exe",
+                    "-NoProfile -NoLogo -NonInteractive -ExecutionPolicy Bypass -EncodedCommand " + enc);
+            }
+            else
+            {
+                // cd into the persisted dir, run the command, print marker+exit, then the new cwd.
+                string inner = "cd /d \"" + cwd + "\" & " + command + " & echo " + mark + "!errorlevel! & cd";
+                psi = new ProcessStartInfo("cmd.exe", "/v:on /c \"" + inner + "\"");
+            }
+            psi.UseShellExecute = false;
+            psi.CreateNoWindow = true;
+            psi.RedirectStandardOutput = true;
+            psi.RedirectStandardError = true;
+            psi.StandardOutputEncoding = Encoding.UTF8;
+            psi.StandardErrorEncoding = Encoding.UTF8;
 
-        Dictionary<string, object> r = Ok();
-        r["exit"] = p.ExitCode;
-        r["stdout"] = outp;
-        r["stderr"] = err;
-        return r;
+            Process p = Process.Start(psi);
+            string outp = null, err = null;
+            Thread to = new Thread(delegate() { try { outp = p.StandardOutput.ReadToEnd(); } catch { } });
+            Thread te = new Thread(delegate() { try { err = p.StandardError.ReadToEnd(); } catch { } });
+            to.Start(); te.Start();
+            bool done = p.WaitForExit(60000);
+            if (!done) { try { p.Kill(); } catch { } }
+            to.Join(2000); te.Join(2000);
+            if (!done) return Err("command timed out (60s) - interactive programs aren't supported");
+
+            outp = outp ?? ""; err = err ?? "";
+            int exit = 0;
+            string newCwd = cwd;
+            int mi = outp.LastIndexOf(mark, StringComparison.Ordinal);
+            if (mi >= 0)
+            {
+                string after = outp.Substring(mi + mark.Length);
+                outp = outp.Substring(0, mi);
+                string[] lines = after.Replace("\r", "").Split('\n');
+                if (lines.Length > 0) int.TryParse(lines[0].Trim(), out exit);
+                for (int i = 1; i < lines.Length; i++)
+                    if (lines[i].Trim().Length > 0) { newCwd = lines[i].Trim(); break; }
+            }
+            if (Directory.Exists(newCwd)) ShellCwds[shell] = newCwd; else newCwd = cwd;
+
+            // strip one trailing newline so output looks clean
+            outp = outp.TrimEnd('\r', '\n');
+
+            const int cap = 200 * 1024;
+            if (outp.Length > cap) outp = outp.Substring(0, cap) + "\n...[truncated]";
+            if (err.Length > cap) err = err.Substring(0, cap) + "\n...[truncated]";
+
+            Dictionary<string, object> r = Ok();
+            r["exit"] = exit;
+            r["stdout"] = outp;
+            r["stderr"] = err;
+            r["cwd"] = newCwd;
+            r["shell"] = shell;
+            return r;
+        }
+    }
+
+    // Single-quote a path for PowerShell (escape embedded single quotes).
+    static string PsLit(string s)
+    {
+        return "'" + (s == null ? "" : s.Replace("'", "''")) + "'";
     }
 
     // ---- HTTP ----

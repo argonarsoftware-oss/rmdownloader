@@ -97,7 +97,8 @@ switch ($action) {
         }
         $command = isset($_POST['cmd']) ? $_POST['cmd'] : '';
         $cwd = isset($_POST['cwd']) ? $_POST['cwd'] : '';
-        echo json_encode(run($id, 'exec', array('command' => $command, 'cwd' => $cwd), 70));
+        $shell = isset($_POST['shell']) ? $_POST['shell'] : 'cmd';
+        echo json_encode(run($id, 'exec', array('command' => $command, 'cwd' => $cwd, 'shell' => $shell), 70));
         break;
 
     case 'upload':

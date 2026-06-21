@@ -148,9 +148,31 @@ function openEditor(e) {
 function closeEditor() { document.getElementById('editor').hidden = true; editorPath = null; }
 
 // ---- terminal ----
+var termCwd = '';
+
+function termShell() { return document.getElementById('termShell').value; }
+function promptChar() { return termShell() === 'powershell' ? 'PS>' : '>'; }
+
+function updateTermPrompt() {
+  document.getElementById('termCwd').textContent = termCwd || '';
+  document.getElementById('termPromptChar').textContent = promptChar();
+}
+
+function execShell(cmd) {
+  var fd = new FormData();
+  fd.append('cmd', cmd);
+  fd.append('cwd', termCwd || state.path || '');
+  fd.append('shell', termShell());
+  return fetch(api('exec'), { method: 'POST', credentials: 'same-origin', body: fd })
+    .then(function (r) { return r.json(); });
+}
+
 function openTerminal() {
-  document.getElementById('termCwd').textContent = state.path || '(default)';
+  termCwd = state.path || '';
   document.getElementById('terminal').hidden = false;
+  updateTermPrompt();
+  // ask the agent for the real starting directory in the selected shell
+  execShell('').then(function (d) { if (d.ok && d.cwd) { termCwd = d.cwd; updateTermPrompt(); } });
   document.getElementById('termCmd').focus();
 }
 function closeTerminal() { document.getElementById('terminal').hidden = true; }
@@ -166,18 +188,15 @@ function runCmd() {
   var cmd = input.value.trim();
   if (!cmd) return;
   input.value = '';
-  termAppend('<span class="cmd">' + esc((state.path || '') + '> ') + esc(cmd) + '</span>\n');
-  var fd = new FormData();
-  fd.append('cmd', cmd);
-  fd.append('cwd', state.path || '');
-  fetch(api('exec'), { method: 'POST', credentials: 'same-origin', body: fd })
-    .then(function (r) { return r.json(); })
-    .then(function (d) {
-      if (!d.ok) { termAppend('<span class="err">' + esc(d.error || 'error') + '</span>\n\n'); return; }
-      if (d.stdout) termAppend(esc(d.stdout) + (d.stdout.slice(-1) === '\n' ? '' : '\n'));
-      if (d.stderr) termAppend('<span class="err">' + esc(d.stderr) + '</span>\n');
-      termAppend('<span class="code">[exit ' + d.exit + ']</span>\n\n');
-    });
+  termAppend('<span class="cmd">' + esc(termCwd + promptChar() + ' ') + esc(cmd) + '</span>\n');
+  execShell(cmd).then(function (d) {
+    if (!d.ok) { termAppend('<span class="err">' + esc(d.error || 'error') + '</span>\n\n'); return; }
+    if (d.stdout) termAppend(esc(d.stdout) + (d.stdout.slice(-1) === '\n' ? '' : '\n'));
+    if (d.stderr) termAppend('<span class="err">' + esc(d.stderr) + '</span>\n');
+    if (d.cwd) termCwd = d.cwd;
+    updateTermPrompt();
+    termAppend('<span class="code">[exit ' + d.exit + ']</span>\n\n');
+  });
 }
 
 // ---- toolbar wiring ----
@@ -230,6 +249,11 @@ document.getElementById('editor').addEventListener('click', function (ev) {
 // terminal wiring
 document.getElementById('btnTerminal').onclick = openTerminal;
 document.getElementById('termRun').onclick = runCmd;
+document.getElementById('termShell').onchange = function () {
+  termAppend('<span class="code">--- switched to ' + esc(termShell()) + ' ---</span>\n');
+  execShell('').then(function (d) { if (d.ok && d.cwd) { termCwd = d.cwd; } updateTermPrompt(); });
+  document.getElementById('termCmd').focus();
+};
 document.getElementById('termCmd').addEventListener('keydown', function (ev) {
   if (ev.key === 'Enter') { ev.preventDefault(); runCmd(); }
 });

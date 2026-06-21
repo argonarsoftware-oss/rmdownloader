@@ -47,11 +47,20 @@ require_login();
 <!-- Terminal modal -->
 <div class="modal" id="terminal" hidden>
   <div class="modal-card wide">
-    <div class="modal-head"><span id="termTitle">Terminal — <span id="termCwd"></span></span><button class="x" data-close>×</button></div>
+    <div class="modal-head">
+      <span>Terminal
+        <select id="termShell" class="agent-select" title="Shell">
+          <option value="cmd">cmd</option>
+          <option value="powershell">PowerShell</option>
+        </select>
+        <span id="termCwd" class="muted"></span>
+      </span>
+      <button class="x" data-close>×</button>
+    </div>
     <pre id="termOut" class="term-out"></pre>
     <div class="term-input">
-      <span class="term-prompt">&gt;</span>
-      <input type="text" id="termCmd" placeholder="e.g. whoami &amp;&amp; hostname &amp;&amp; dir" spellcheck="false" autocomplete="off">
+      <span class="term-prompt" id="termPromptChar">&gt;</span>
+      <input type="text" id="termCmd" placeholder="type a command, Enter to run" spellcheck="false" autocomplete="off">
       <button class="btn" id="termRun">Run</button>
     </div>
   </div>
