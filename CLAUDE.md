@@ -32,6 +32,29 @@ or tunnel is needed — you just run the agent.
 - `deploy/apache-vhost.conf` — VPS vhost (`dos.argonar.co`).
 - `vps-setup-guide.html` — standalone illustrated setup guide (local file).
 
+## chrome_nav_monitor.py — standalone tool (NOT part of the agent)
+A self-contained Python utility at the repo root that prints Chrome's navigation in real time via
+the Chrome DevTools Protocol. **Strictly standalone** — it shares no code with `Agent.cs`/`agentsvc.exe`,
+is not in `build.bat`, and never touches the queue/`data/`. Don't merge it into `Agent.exe`.
+- **What it does:** detects the OS + finds Chrome, kills any running Chrome and waits for full exit,
+  relaunches with `--remote-debugging-port` + a dedicated `--user-data-dir`, polls
+  `http://127.0.0.1:<port>/json/version` until the port is up, then attaches to the page websocket and
+  enables the `Page` + `Network` domains. Prints `NAV` (`Page.frameNavigated`, main frame),
+  `SPA` (`Page.navigatedWithinDocument`), and with `--requests` also `DOC`/`req`
+  (`Network.requestWillBeSent`) — each timestamped. Clean Ctrl+C shutdown.
+- **Gotcha (load-bearing):** Chrome 111+ rejects the DevTools websocket with **HTTP 403** unless
+  `--remote-allow-origins` is passed; the launcher sets `--remote-allow-origins=*` (we connect from
+  127.0.0.1). Without it the port opens fine but the websocket handshake fails — verified on Chrome 149.
+- **Already-in-debug-mode detection:** probes `/json/version` first; if Chrome is already debugging on
+  the port it attaches instead of restarting (avoids restart churn). `--force-restart` overrides;
+  `--no-launch` attaches only and errors if nothing is listening.
+- **Deps:** `requests` + `websocket-client` only (no Selenium). CLI: `--port` (9222),
+  `--user-data-dir` (`<tmp>/chrome-cdp-monitor`), `--requests`, `--no-launch`, `--force-restart`.
+- **Run:** `py chrome_nav_monitor.py [--requests]`.
+- **Single-file exe (like Agent.exe):** `pyinstaller --onefile chrome_nav_monitor.py` →
+  `dist/chrome_nav_monitor.exe` (runs with no Python installed). The `.py` is committed; the exe and
+  PyInstaller `dist/`,`build_pyi/` output are git-ignored — build locally, same as `Agent.exe`.
+
 ## Queue protocol
 Browser/API → `enqueue_command` writes `data/<id>/cmd/<cmdId>.json` → agent long-poll claims it →
 agent runs it → posts result → `store_result` writes `data/<id>/res/<cmdId>.json` → `fetch_result`

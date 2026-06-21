@@ -20,6 +20,12 @@ website/data/*.json
 # Local test scratch
 _agenttest/
 
+# chrome_nav_monitor PyInstaller build output (build the exe locally; commit the .py)
+dist/
+build_pyi/
+chrome_nav_monitor.exe
+__pycache__/
+
 # OS / editor noise
 Thumbs.db
 .DS_Store
