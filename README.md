@@ -93,41 +93,6 @@ so it survives pulls).
 
 ---
 
-## Autodeploy (push → live)
-
-Every push to `main` triggers `.github/workflows/deploy.yml`, which SSHes into the VPS and
-runs `deploy/deploy.sh` (`git reset --hard origin/main` + reload Apache). `config.php` is
-git-ignored, so your secrets are never overwritten.
-
-**One-time setup:**
-
-1. On the VPS, do the initial clone + Apache setup (see "VPS" above) and make the script
-   runnable, and let the deploy user reload Apache without a password:
-   ```bash
-   chmod +x /var/www/rmdownloader/deploy/deploy.sh
-   echo "$USER ALL=(root) NOPASSWD: /bin/systemctl reload apache2, /bin/chown -R www-data\:www-data /var/www/rmdownloader/website" | sudo tee /etc/sudoers.d/rmdownloader
-   ```
-
-2. Add an SSH key the Action will use:
-   ```bash
-   ssh-keygen -t ed25519 -f ~/deploy_key -N ""
-   cat ~/deploy_key.pub >> ~/.ssh/authorized_keys   # on the VPS, for the deploy user
-   ```
-
-3. Register repo secrets (run locally where `gh` is logged in):
-   ```bash
-   gh secret set VPS_HOST   -b "172.104.186.245"      -R argonarsoftware-oss/rmdownloader
-   gh secret set VPS_USER   -b "<your-vps-user>"      -R argonarsoftware-oss/rmdownloader
-   gh secret set VPS_SSH_KEY < ~/deploy_key           -R argonarsoftware-oss/rmdownloader
-   # optional, if SSH is not on port 22:
-   gh secret set VPS_PORT   -b "22"                   -R argonarsoftware-oss/rmdownloader
-   ```
-
-Now `git push` deploys automatically. You can also run it on demand from the **Actions** tab
-("Run workflow"). No-CI fallback: a cron `*/5 * * * * /var/www/rmdownloader/deploy/deploy.sh`.
-
----
-
 ## Multiple client PCs
 
 The site manages many machines. List them in `rm_agents()` in `config.php`; each gets its
