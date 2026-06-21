@@ -41,3 +41,9 @@ define('API_KEY', '');
 // Commands run as whatever user the agent runs as (SYSTEM if auto-started elevated).
 // Set false to disable command execution entirely.
 define('ALLOW_EXEC', true);
+
+// ---- DNS manager (TinyDNS) ----
+// Default folder on the agent PC holding records.txt / blocklist.txt / dnsserver.exe,
+// and the scheduled-task name. Both are editable per-PC in the DNS page.
+define('DNS_DIR', 'C:\\Users\\Administrator\\Desktop\\dns\\dist');
+define('DNS_TASK', 'TinyDNS');

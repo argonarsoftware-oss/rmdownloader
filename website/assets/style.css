@@ -71,6 +71,28 @@ tr:hover .row-act{visibility:visible}
 #editorText{flex:1;width:100%;border:none;background:#0c0e14;color:var(--text);padding:14px;
   font:13px/1.5 Consolas,Menlo,monospace;resize:none;outline:none}
 
+/* DNS manager */
+.pill{display:inline-block;background:#0c0e14;border:1px solid var(--line);border-radius:20px;padding:5px 12px;font-size:13px}
+.dns-main{padding:14px;display:flex;flex-direction:column;gap:14px}
+.dns-card{background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.dns-head{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--line);font-weight:600;flex-wrap:wrap}
+.dns-head .muted{font-weight:400}
+.dns-edit{width:100%;height:180px;border:none;background:#0c0e14;color:var(--text);padding:12px;
+  font:13px/1.5 Consolas,Menlo,monospace;resize:vertical;outline:none;display:block}
+.log-wrap{max-height:320px;overflow:auto}
+.loglist{width:100%;border-collapse:collapse;font:12.5px/1.4 Consolas,Menlo,monospace}
+.loglist th{position:sticky;top:0;background:var(--bg);text-align:left;color:var(--muted);font-weight:500;padding:6px 10px;border-bottom:1px solid var(--line)}
+.loglist td{padding:4px 10px;border-bottom:1px solid #1b1f2b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.loglist td:nth-child(3){white-space:normal;word-break:break-all;font-family:inherit}
+.l-time{width:150px;color:var(--muted)}
+.l-client{width:120px}
+.l-type{width:60px;color:var(--muted)}
+.l-disp{width:150px}
+.d-block{color:var(--danger)}
+.d-nx{color:#caa24a}
+.d-local{color:var(--green)}
+.d-fwd{color:var(--muted)}
+
 /* terminal */
 .term-out{flex:1;margin:0;padding:14px;overflow:auto;background:#0c0e14;color:#cfe3d0;
   font:12.5px/1.5 Consolas,Menlo,monospace;white-space:pre-wrap;word-break:break-word}
