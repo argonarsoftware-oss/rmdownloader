@@ -24,6 +24,16 @@ function post(action, params, obj) {
 function esc(s) { return String(s).replace(/[&<>]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]; }); }
 function msg(t) { document.getElementById('dnsMsg').textContent = t || ''; }
 
+// Slide-in popup for save success / failure.
+function toast(text, ok) {
+  var t = document.getElementById('dnsToast');
+  if (!t) { t = document.createElement('div'); t.id = 'dnsToast'; document.body.appendChild(t); }
+  t.textContent = (ok ? '✓ ' : '✕ ') + text;
+  t.className = 'toast ' + (ok ? 'ok' : 'err') + ' show';
+  clearTimeout(toast._t);
+  toast._t = setTimeout(function () { t.className = 'toast ' + (ok ? 'ok' : 'err'); }, 2800);
+}
+
 var agentSel = document.getElementById('agentSel');
 var dnsDirInput = document.getElementById('dnsDir');
 dnsDirInput.placeholder = DNS_DIR;   // hint only — real folder comes from cache or auto-detect
@@ -43,7 +53,11 @@ function cacheDir(d) { try { if (d) localStorage.setItem(cacheKey(), d); } catch
 function saveFile(path, ta, label) {
   msg('Saving ' + label + ' …');
   return post('save', { path: path }, { content: document.getElementById(ta).value })
-    .then(function (d) { msg(d.ok ? (label + ' saved — DNS hot-reloads it live.') : ('Error: ' + (d.error || ''))); });
+    .then(function (d) {
+      if (d.ok) { msg(label + ' saved — DNS hot-reloads it live.'); toast(label + ' saved — hot-reloaded live', true); }
+      else { msg('Error: ' + (d.error || '')); toast(label + ' save failed: ' + (d.error || 'unknown error'), false); }
+    })
+    .catch(function (e) { msg('Save failed: ' + e.message); toast(label + ' save failed: ' + e.message, false); });
 }
 
 // ---- status pill ----

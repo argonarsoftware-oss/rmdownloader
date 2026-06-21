@@ -110,3 +110,12 @@ tr:hover .row-act{visibility:visible}
 .term-input input{flex:1;background:#0c0e14;border:1px solid var(--line);color:var(--text);
   padding:8px 10px;border-radius:7px;outline:none;font:13px/1.4 Consolas,Menlo,monospace}
 .term-input input:focus{border-color:var(--accent)}
+
+/* save toast — success / error popup for the DNS page */
+.toast{position:fixed;left:50%;top:-60px;transform:translateX(-50%);z-index:60;
+  min-width:220px;max-width:80vw;padding:11px 16px;border-radius:9px;font-size:13.5px;font-weight:500;
+  display:flex;align-items:center;gap:8px;box-shadow:0 8px 30px rgba(0,0,0,.45);
+  opacity:0;transition:top .25s ease,opacity .25s ease;pointer-events:none}
+.toast.show{top:18px;opacity:1}
+.toast.ok{background:#173a23;border:1px solid #2ea043;color:#b7f0c4}
+.toast.err{background:#3a2125;border:1px solid var(--danger);color:#ffb4b4}
