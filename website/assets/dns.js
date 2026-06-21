@@ -124,6 +124,17 @@ function loadIps() {
   });
 }
 
+// Ask the agent where dnl.exe actually lives (from the TinyDNS task) and use that folder,
+// so the page reads the config next to the exe no matter where it's installed on each PC.
+function detectDnsDir() {
+  var ps = "$t = Get-ScheduledTask -TaskName '" + DNS_TASK + "' -ErrorAction SilentlyContinue; if ($t) { Split-Path -Parent $t.Actions.Execute }";
+  return execCmd(ps, 'powershell').then(function (d) {
+    var p = (d.ok && d.stdout) ? d.stdout.replace(/[\r\n]+/g, '').trim() : '';
+    if (p) dnsDirInput.value = p;
+    return p;
+  });
+}
+
 function loadAll() {
   loadFile(blockPath(), 'blockText');
   loadFile(recPath(), 'recText');
@@ -143,7 +154,7 @@ agentSel.onchange = function () {
   state.agent = this.value;
   try { localStorage.setItem('rmd_agent', this.value); } catch (e) {}
   refreshHostInfo();
-  loadAll();
+  detectDnsDir().then(loadAll);
 };
 document.getElementById('btnReload').onclick = loadAll;
 document.getElementById('btnStatus').onclick = refreshStatus;
@@ -180,5 +191,5 @@ getJSON('agents').then(function (d) {
   agentSel.value = pick;
   try { localStorage.setItem('rmd_agent', pick); } catch (e) {}
   refreshHostInfo();
-  loadAll();
+  detectDnsDir().then(loadAll);
 });
