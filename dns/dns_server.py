@@ -437,6 +437,60 @@ def resolve_alias(target, upstreams, ttl=60):
     return ip
 
 
+# ---- forward-result cache (keyed by name/type/class, TTL-respecting) ----
+_fwd_cache = {}            # (name, qtype, qclass) -> (response_bytes, expiry)
+_fwd_lock = threading.Lock()
+FWD_CACHE_MAX = 5000       # bound memory; entries also expire by TTL
+FWD_TTL_CAP = 3600         # never trust a TTL longer than an hour
+
+
+def _min_ttl(resp):
+    """Smallest TTL across the answer records, or None if there are no answers."""
+    try:
+        qd = struct.unpack_from('!H', resp, 4)[0]
+        an = struct.unpack_from('!H', resp, 6)[0]
+        if an == 0:
+            return None
+        off = 12
+        for _ in range(qd):
+            off = _skip_name(resp, off) + 4
+        ttls = []
+        for _ in range(an):
+            off = _skip_name(resp, off)
+            rtype, rclass, ttl, rdlen = struct.unpack_from('!HHIH', resp, off)
+            off += 10 + rdlen
+            ttls.append(ttl)
+        return min(ttls) if ttls else None
+    except (IndexError, struct.error):
+        return None
+
+
+def cache_get(key):
+    now = time.time()
+    with _fwd_lock:
+        hit = _fwd_cache.get(key)
+        if hit:
+            if hit[1] > now:
+                return hit[0]
+            del _fwd_cache[key]
+    return None
+
+
+def cache_put(key, resp, ttl):
+    if not ttl or ttl <= 0:
+        return
+    if ttl > FWD_TTL_CAP:
+        ttl = FWD_TTL_CAP
+    now = time.time()
+    with _fwd_lock:
+        if len(_fwd_cache) >= FWD_CACHE_MAX:
+            for k in [k for k, v in _fwd_cache.items() if v[1] <= now]:
+                del _fwd_cache[k]
+            if len(_fwd_cache) >= FWD_CACHE_MAX:
+                _fwd_cache.clear()
+        _fwd_cache[key] = (resp, now + ttl)
+
+
 def handle(data, addr, sock, records, blocks, qlog, upstreams):
     try:
         client = addr[0]
@@ -484,9 +538,18 @@ def handle(data, addr, sock, records, blocks, qlog, upstreams):
                     return
                 # redirect target couldn't be resolved -> fall through to forward
 
-        # 3) forward everything else
+        # 3) forward everything else (TTL-cached)
+        key = (lname, qtype, qclass)
+        cached = cache_get(key)
+        if cached is not None:
+            # serve cached bytes, but stamp the client's transaction id (first 2 bytes)
+            sock.sendto(data[:2] + cached[2:], addr)
+            qlog.write(client, qname, tname, 'FWD (cache)')
+            return
         try:
             reply = forward(data, upstreams)
+            # cache before replying so other concurrent PCs hit it right away
+            cache_put(key, reply, _min_ttl(reply))
             sock.sendto(reply, addr)
             qlog.write(client, qname, tname, 'FWD')
             print('[query] ' + qname + ' type=' + tname + ' -> forwarded to upstream')
