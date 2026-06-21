@@ -214,6 +214,21 @@ function is_online($id) {
     return (time() - (int)@file_get_contents($f)) < 60;
 }
 
+// Record the agent's reported version (from X-Agent-Version) so the UI can show it
+// and feature-detect. Works for both static and auto-enrolled agents.
+function touch_version($id, $ver) {
+    $ver = preg_replace('/[^0-9A-Za-z._-]/', '', (string)$ver);
+    if ($ver === '') return;
+    $dir = agent_dir($id);
+    ensure_dir($dir);
+    @file_put_contents($dir . '/version', substr($ver, 0, 32));
+}
+
+function agent_version($id) {
+    $f = agent_dir($id) . '/version';
+    return is_file($f) ? trim((string)@file_get_contents($f)) : '';
+}
+
 // Remove stale queue files so a long-offline agent doesn't accumulate junk.
 function cleanup_stale($id, $maxAge = 120) {
     foreach (array('/cmd', '/res') as $sub) {

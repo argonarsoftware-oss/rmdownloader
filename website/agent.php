@@ -24,6 +24,9 @@ if ($id === null) {
     exit;
 }
 
+// Record the agent's protocol version (forward/backward-compat handshake).
+if (isset($_SERVER['HTTP_X_AGENT_VERSION'])) touch_version($id, $_SERVER['HTTP_X_AGENT_VERSION']);
+
 $action = isset($_GET['action']) ? $_GET['action'] : '';
 @set_time_limit(60);
 ignore_user_abort(true);

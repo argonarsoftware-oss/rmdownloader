@@ -38,6 +38,19 @@ agent runs it → posts result → `store_result` writes `data/<id>/res/<cmdId>.
 - Multiple PCs: one `name`+`token` entry per machine in `rm_agents()`; the UI shows a picker.
 - C# targets the in-box compiler — no C# 6+ syntax (no string interpolation / `?.` / `nameof`).
 
+## Agent ↔ web compatibility (keep old & new versions interoperable)
+The agent reports `AGENT_VERSION` + a `CAPS` list (`Agent.cs`); it's sent on every request
+via `X-Agent-Version` (server records it per-agent → shown in `?action=agents`) and returned by
+the `info` op (`version`, `caps`). To keep a fleet of mixed agent versions working without
+redeploying all of them, the protocol is **additive**:
+- **Never remove or rename** an op or a `CAPS` entry; only append. Known ops never change meaning.
+- **New command args are optional** — old agents ignore args they don't read.
+- **New result fields are optional** — old web ignores fields it doesn't use (e.g. drive `label`).
+- A newer web app calling an op an old agent lacks gets `{ok:false, unknown_op:true}` — **feature-detect**
+  (check `caps`/`version`) and fall back instead of erroring.
+- Bump `AGENT_VERSION` when behavior changes; only rebuild/redeploy agents for features that need
+  new data *from* the agent (e.g. drive labels). Web-only changes need no agent rebuild.
+
 ## Build / run
 - Agent: `cd agent && build.bat`, set `agent.conf`, run `Agent.exe` (auto-start via the PS1).
 - Web (VPS): `git clone` into `/var/www/`, `cp config.sample.php config.php`, edit, point Apache

@@ -81,8 +81,11 @@ function render() {
     var tr = document.createElement('tr');
 
     var icon = e.type === 'drive' ? '💾' : (isDir ? '📁' : '📄');
+    // Show the volume label next to a drive letter when the agent reports one
+    // (older agents omit e.label -> we just show the letter).
+    var label = (e.type === 'drive' && e.label) ? ' <span class="muted">(' + esc(e.label) + ')</span>' : '';
     var nameCell = '<div class="name-cell ' + (isDir ? 'clickable' : '') + '">' +
-      '<span class="icon">' + icon + '</span><span>' + esc(e.name) + '</span></div>';
+      '<span class="icon">' + icon + '</span><span>' + esc(e.name) + label + '</span></div>';
 
     var acts = '';
     if (!isDir) acts += '<button class="iconbtn" data-act="download" title="Download">⬇</button>';
@@ -288,6 +291,7 @@ function loadAgents(preferId) {
       var o = document.createElement('option');
       o.value = a.id;
       o.textContent = (a.online ? '🟢 ' : '⚪ ') + a.name + (a.online ? '' : ' (offline)');
+      if (a.version) o.title = 'agent v' + a.version;   // older agents report no version
       agentSel.appendChild(o);
     });
     var has = function (id) { return d.agents.some(function (a) { return a.id === id; }); };

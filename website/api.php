@@ -22,7 +22,7 @@ if ($action === 'agents') {
     header('Content-Type: application/json');
     $out = array();
     foreach (all_agents() as $id => $a) {
-        $out[] = array('id' => $id, 'name' => $a['name'], 'online' => is_online($id));
+        $out[] = array('id' => $id, 'name' => $a['name'], 'online' => is_online($id), 'version' => agent_version($id));
     }
     echo json_encode(array('ok' => true, 'agents' => $out));
     exit;

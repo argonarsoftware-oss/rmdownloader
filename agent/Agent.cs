@@ -24,6 +24,19 @@ class Agent
     static string AgentId = "";                    // stable per-machine id (for auto-enroll)
     static readonly JavaScriptSerializer J = new JavaScriptSerializer();
 
+    // ---- protocol version + capabilities (for backward/forward compatibility) ----
+    // Bump AGENT_VERSION when behavior changes. CAPS lists features the web app can
+    // feature-detect against: it is ADDITIVE — never rename or remove an existing entry,
+    // only append. Compatibility contract:
+    //   * new web app + old agent  -> web checks caps / handles {unknown_op:true}, degrades.
+    //   * new agent + old web app  -> extra result fields (label/version/caps) are ignored.
+    //   * known ops never change meaning; new args are optional; new result fields are optional.
+    const string AGENT_VERSION = "1.1.0";
+    static readonly string[] CAPS = new string[] {
+        "info", "list", "read", "download", "write", "mkdir", "delete", "rename", "exec",
+        "drive-label", "version"
+    };
+
     static void Main(string[] args)
     {
         // Config sources, in increasing priority: built-in defaults -> values baked into the
@@ -133,7 +146,13 @@ class Agent
             case "delete":   return DoDelete(Str(cmd, "path"));
             case "rename":   return DoRename(Str(cmd, "path"), Str(cmd, "newName"));
             case "exec":     return DoExec(Str(cmd, "command"), Str(cmd, "cwd"), Str(cmd, "shell"));
-            default:         return Err("unknown op: " + op);
+            default:
+                // Forward-compat: a newer web app may send an op this agent doesn't know.
+                // Flag it so the caller can detect "agent too old" and fall back gracefully.
+                var u = Err("unknown op: " + op);
+                u["unknown_op"] = true;
+                u["agent_version"] = AGENT_VERSION;
+                return u;
         }
     }
 
@@ -144,6 +163,8 @@ class Agent
         r["user"] = Environment.UserName;
         r["os"] = Environment.OSVersion.ToString();
         r["sandbox"] = Root;
+        r["version"] = AGENT_VERSION;          // so the web app can show/feature-detect
+        r["caps"] = CAPS;
         var drives = new List<object>();
         foreach (DriveInfo d in DriveInfo.GetDrives())
         {
@@ -157,6 +178,7 @@ class Agent
                     di["type"] = d.DriveType.ToString();
                     di["total"] = d.TotalSize;
                     di["free"] = d.AvailableFreeSpace;
+                    di["label"] = d.VolumeLabel;   // volume name, e.g. "GAMES"
                 }
             }
             catch { }
@@ -181,6 +203,7 @@ class Agent
                 var e = new Dictionary<string, object>();
                 e["name"] = d.Name; e["path"] = d.Name; e["type"] = "drive";
                 e["size"] = -1; e["modified"] = ""; e["hidden"] = false;
+                try { if (d.IsReady) e["label"] = d.VolumeLabel; } catch { }   // optional volume name
                 entries.Add(e);
             }
             r["entries"] = entries;
@@ -434,6 +457,7 @@ class Agent
         req.Headers["X-Agent-Token"] = Token;
         req.Headers["X-Agent-Id"] = AgentId;
         req.Headers["X-Agent-Name"] = Environment.MachineName;
+        req.Headers["X-Agent-Version"] = AGENT_VERSION;   // server records this for the picker / feature-detect
         req.ContentType = "application/json";
         req.UserAgent = "rmdownloader-agent";
         req.Timeout = 40000;            // > server long-poll window (20s)
