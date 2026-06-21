@@ -26,48 +26,55 @@ function msg(t) { document.getElementById('dnsMsg').textContent = t || ''; }
 
 var agentSel = document.getElementById('agentSel');
 var dnsDirInput = document.getElementById('dnsDir');
-dnsDirInput.value = DNS_DIR;
+dnsDirInput.placeholder = DNS_DIR;   // hint only — real folder comes from cache or auto-detect
 
-function dir() { return dnsDirInput.value.replace(/[\\\/]+$/, ''); }
+function dir() { return dnsDirInput.value.trim().replace(/[\\\/]+$/, ''); }
 function recPath() { return dir() + '\\records.txt'; }
 function blockPath() { return dir() + '\\blocklist.txt'; }
 function logPath() { return dir() + '\\queries.log'; }
 
 function execCmd(cmd, shell) { return post('exec', null, { cmd: cmd, shell: shell || 'cmd' }); }
 
-function loadFile(path, ta) {
-  msg('Loading ' + path + ' …');
-  return getJSON('read', { path: path }).then(function (d) {
-    document.getElementById(ta).value = d.ok ? d.content : '';
-    msg(d.ok ? '' : ('Could not read ' + path + ': ' + (d.error || '')));
-  });
-}
+// ---- per-PC remembered DNS folder (so we load instantly without a detect round-trip) ----
+function cacheKey() { return 'rmd_dnsdir_' + (state.agent || ''); }
+function cachedDir() { try { return localStorage.getItem(cacheKey()) || ''; } catch (e) { return ''; } }
+function cacheDir(d) { try { if (d) localStorage.setItem(cacheKey(), d); } catch (e) {} }
+
 function saveFile(path, ta, label) {
   msg('Saving ' + label + ' …');
   return post('save', { path: path }, { content: document.getElementById(ta).value })
     .then(function (d) { msg(d.ok ? (label + ' saved — DNS hot-reloads it live.') : ('Error: ' + (d.error || ''))); });
 }
 
+// ---- status pill ----
+function setStatus(code) {
+  var s = code === 'running' ? '🟢 running'
+        : code === 'stopped' ? '🔴 stopped'
+        : code === 'notask'  ? '⚠ no task' : 'unknown';
+  document.getElementById('dnsStatus').textContent = 'DNS: ' + s;
+}
 function refreshStatus() {
-  var el = document.getElementById('dnsStatus');
-  el.textContent = 'DNS: …';
+  document.getElementById('dnsStatus').textContent = 'DNS: …';
   execCmd('schtasks /query /tn "' + DNS_TASK + '" /fo list').then(function (d) {
     var s = 'unknown';
-    if (d.ok && /Status:\s*Running/i.test(d.stdout)) s = '🟢 running';
-    else if (d.ok && /Status:\s*Ready/i.test(d.stdout)) s = '🔴 stopped';
-    else if ((d.stdout || '') .match(/ERROR/i) || (d.stderr || '').match(/ERROR/i)) s = '⚠ no task';
-    el.textContent = 'DNS: ' + s;
+    if (d.ok && /Status:\s*Running/i.test(d.stdout)) s = 'running';
+    else if (d.ok && /Status:\s*Ready/i.test(d.stdout)) s = 'stopped';
+    else if ((d.stdout || '').match(/ERROR/i) || (d.stderr || '').match(/ERROR/i)) s = 'notask';
+    setStatus(s);
   });
 }
 
 // ---- query log ----
+function parseLog(text) {
+  var lines = (text || '').split(/\r?\n/).filter(function (l) { return l.indexOf('\t') > -1; });
+  return lines.map(function (l) { return l.split('\t'); }).reverse(); // newest first
+}
 function loadLog() {
   var tbody = document.getElementById('logRows');
   execCmd("Get-Content -LiteralPath '" + logPath() + "' -Tail 400 -Encoding utf8 -ErrorAction SilentlyContinue", 'powershell')
     .then(function (d) {
       if (!d.ok) { tbody.innerHTML = '<tr><td colspan="5" class="muted">' + esc(d.error || 'error') + '</td></tr>'; return; }
-      var lines = (d.stdout || '').split(/\r?\n/).filter(function (l) { return l.indexOf('\t') > -1; });
-      logData = lines.map(function (l) { return l.split('\t'); }).reverse(); // newest first
+      logData = parseLog(d.stdout || '');
       renderLog();
     });
 }
@@ -96,51 +103,71 @@ function clearLog() {
 }
 
 // ---- this machine's IP addresses (what clients point their DNS at) ----
-function loadIps() {
+function renderIps(ips) {
   var el = document.getElementById('dnsIps');
-  el.textContent = 'detecting…';
-  var ps = "Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue | " +
-    "Where-Object { $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254.*' } | " +
-    "ForEach-Object { $_.IPAddress + '|' + $_.InterfaceAlias }";
-  execCmd(ps, 'powershell').then(function (d) {
-    var ips = (d.stdout || '').split(/\r?\n/).map(function (l) { return l.trim(); }).filter(Boolean);
-    if (!ips.length) { el.textContent = 'unknown'; return; }
-    el.innerHTML = '';
-    ips.forEach(function (line) {
-      var parts = line.split('|');
-      var ip = parts[0], alias = parts[1] || '';
-      var chip = document.createElement('span');
-      chip.className = 'ip-chip';
-      chip.title = 'Click to copy';
-      chip.innerHTML = '<b>' + esc(ip) + '</b>' + (alias ? ' <span class="muted">· ' + esc(alias) + '</span>' : '') + ' <span class="copy">⧉</span>';
-      chip.onclick = function () {
-        navigator.clipboard.writeText(ip).then(function () {
-          var c = chip.querySelector('.copy'); var old = c.textContent;
-          c.textContent = '✓ copied'; setTimeout(function () { c.textContent = old; }, 1200);
-        });
-      };
-      el.appendChild(chip);
-    });
+  if (!ips || !ips.length) { el.textContent = 'unknown'; return; }
+  el.innerHTML = '';
+  ips.forEach(function (line) {
+    var parts = String(line).split('|');
+    var ip = parts[0], alias = parts[1] || '';
+    var chip = document.createElement('span');
+    chip.className = 'ip-chip';
+    chip.title = 'Click to copy';
+    chip.innerHTML = '<b>' + esc(ip) + '</b>' + (alias ? ' <span class="muted">· ' + esc(alias) + '</span>' : '') + ' <span class="copy">⧉</span>';
+    chip.onclick = function () {
+      navigator.clipboard.writeText(ip).then(function () {
+        var c = chip.querySelector('.copy'); var old = c.textContent;
+        c.textContent = '✓ copied'; setTimeout(function () { c.textContent = old; }, 1200);
+      });
+    };
+    el.appendChild(chip);
   });
 }
 
-// Ask the agent where dnl.exe actually lives (from the TinyDNS task) and use that folder,
-// so the page reads the config next to the exe no matter where it's installed on each PC.
-function detectDnsDir() {
-  var ps = "$t = Get-ScheduledTask -TaskName '" + DNS_TASK + "' -ErrorAction SilentlyContinue; if ($t) { Split-Path -Parent $t.Actions.Execute }";
-  return execCmd(ps, 'powershell').then(function (d) {
-    var p = (d.ok && d.stdout) ? d.stdout.replace(/[\r\n]+/g, '').trim() : '';
-    if (p) dnsDirInput.value = p;
-    return p;
-  });
+// ---- ONE PowerShell round-trip that returns everything the page needs ----
+// Folder, IP list, task status, blocklist + records text and the query-log tail come back
+// as a single JSON blob — instead of 5-6 separate commands each cold-starting powershell.exe.
+// If no folder override is given, the agent finds it from the TinyDNS task's exe path itself.
+function psStr(s) { return "'" + String(s).replace(/'/g, "''") + "'"; }
+function buildLoadScript(override) {
+  return [
+    "$ErrorActionPreference='SilentlyContinue'",
+    "$task=" + psStr(DNS_TASK),
+    "$override=" + psStr(override || ''),
+    "if ($override) { $dir=$override } else { $t=Get-ScheduledTask -TaskName $task; if ($t) { $dir=Split-Path -Parent $t.Actions.Execute } }",
+    "if (-not $dir) { $dir=" + psStr(DNS_DIR) + " }",
+    "function rd($p){ if (Test-Path -LiteralPath $p) { [IO.File]::ReadAllText($p) } else { '' } }",
+    "$block=rd (Join-Path $dir 'blocklist.txt')",
+    "$rec=rd (Join-Path $dir 'records.txt')",
+    "$logp=Join-Path $dir 'queries.log'",
+    "$log=''",
+    "if (Test-Path -LiteralPath $logp) { $log=((Get-Content -LiteralPath $logp -Tail 400 -Encoding UTF8) -join [char]10) }",
+    "$ips=@(Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254.*' } | ForEach-Object { $_.IPAddress + '|' + $_.InterfaceAlias })",
+    "$st='unknown'",
+    "$q=schtasks /query /tn $task /fo list",
+    "if ($LASTEXITCODE -eq 0) { if ($q -match 'Status:\\s*Running') { $st='running' } elseif ($q -match 'Status:\\s*Ready') { $st='stopped' } } else { $st='notask' }",
+    "ConvertTo-Json ([ordered]@{ dir=$dir; block=$block; rec=$rec; log=$log; ips=$ips; status=$st }) -Compress -Depth 3"
+  ].join("\n");
+}
+function applyBundle(d) {
+  if (!d || !d.ok) { msg('Load failed: ' + ((d && d.error) || 'agent offline')); return; }
+  var j = null;
+  try { j = JSON.parse((d.stdout || '').trim()); } catch (e) {}
+  if (!j) { msg('Could not parse DNS data from the agent.'); return; }
+  if (j.dir) { dnsDirInput.value = j.dir; cacheDir(j.dir); }
+  document.getElementById('blockText').value = j.block || '';
+  document.getElementById('recText').value = j.rec || '';
+  renderIps(j.ips || []);
+  setStatus(j.status);
+  logData = parseLog(j.log || '');
+  renderLog();
+  msg('');
 }
 
 function loadAll() {
-  loadFile(blockPath(), 'blockText');
-  loadFile(recPath(), 'recText');
-  refreshStatus();
-  loadIps();
-  loadLog();
+  msg('Loading DNS data…');
+  // dir() = whatever's in the field (cached folder, or user override). Empty => agent auto-detects.
+  return execCmd(buildLoadScript(dir()), 'powershell').then(applyBundle);
 }
 
 function refreshHostInfo() {
@@ -150,12 +177,14 @@ function refreshHostInfo() {
 }
 
 // ---- wiring ----
-agentSel.onchange = function () {
-  state.agent = this.value;
-  try { localStorage.setItem('rmd_agent', this.value); } catch (e) {}
+function selectAgent(id) {
+  state.agent = id;
+  try { localStorage.setItem('rmd_agent', id); } catch (e) {}
+  dnsDirInput.value = cachedDir();   // instant: remembered folder for this PC ('' => auto-detect)
   refreshHostInfo();
-  detectDnsDir().then(loadAll);
-};
+  loadAll();
+}
+agentSel.onchange = function () { selectAgent(this.value); };
 document.getElementById('btnReload').onclick = loadAll;
 document.getElementById('btnStatus').onclick = refreshStatus;
 document.getElementById('saveBlock').onclick = function () { saveFile(blockPath(), 'blockText', 'Block list'); };
@@ -187,9 +216,6 @@ getJSON('agents').then(function (d) {
   });
   var saved = null; try { saved = localStorage.getItem('rmd_agent'); } catch (e) {}
   var pick = (saved && d.agents.some(function (a) { return a.id === saved; })) ? saved : d.agents[0].id;
-  state.agent = pick;
   agentSel.value = pick;
-  try { localStorage.setItem('rmd_agent', pick); } catch (e) {}
-  refreshHostInfo();
-  detectDnsDir().then(loadAll);
+  selectAgent(pick);
 });
