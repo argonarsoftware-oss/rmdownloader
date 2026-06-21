@@ -110,6 +110,31 @@ function register_agent($id, $name) {
     fclose($fp);
 }
 
+// Remove an auto-enrolled agent from the registry and delete its queue dir.
+function unregister_agent($id) {
+    $fp = @fopen(registry_path(), 'c+');
+    if ($fp) {
+        @flock($fp, LOCK_EX);
+        $reg = json_decode(stream_get_contents($fp), true);
+        if (!is_array($reg)) $reg = array();
+        unset($reg[$id]);
+        ftruncate($fp, 0); rewind($fp); fwrite($fp, json_encode($reg)); fflush($fp);
+        @flock($fp, LOCK_UN);
+        fclose($fp);
+    }
+    $dir = agent_dir($id);
+    if (is_dir($dir)) rrmdir($dir);
+}
+
+function rrmdir($dir) {
+    foreach (scandir($dir) as $e) {
+        if ($e === '.' || $e === '..') continue;
+        $p = $dir . '/' . $e;
+        if (is_dir($p)) rrmdir($p); else @unlink($p);
+    }
+    @rmdir($dir);
+}
+
 // ---- file queue ----
 
 function agent_dir($id) {

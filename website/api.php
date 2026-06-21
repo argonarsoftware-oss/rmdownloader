@@ -28,6 +28,20 @@ if ($action === 'agents') {
     exit;
 }
 
+// Remove an auto-enrolled PC from the list (registry agents only; static ones live in config.php).
+if ($action === 'removeagent') {
+    header('Content-Type: application/json');
+    $rid = sanitize_id(isset($_REQUEST['id']) ? $_REQUEST['id'] : '');
+    $reg = load_registry();
+    if ($rid === '' || !isset($reg[$rid])) {
+        echo json_encode(array('ok' => false, 'error' => 'Only auto-enrolled PCs can be removed (static ones are set in config.php).'));
+        exit;
+    }
+    unregister_agent($rid);
+    echo json_encode(array('ok' => true));
+    exit;
+}
+
 $id = current_agent_id();
 if ($id === null) {
     header('Content-Type: application/json');

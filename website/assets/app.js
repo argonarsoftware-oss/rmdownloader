@@ -279,16 +279,35 @@ agentSel.onchange = function () {
 };
 
 // ---- boot ----
-getJSON('agents').then(function (d) {
-  if (!d.ok || !d.agents.length) { setStatus('No agents configured in config.php.'); return; }
-  agentSel.innerHTML = '';
-  d.agents.forEach(function (a) {
-    var o = document.createElement('option');
-    o.value = a.id;
-    o.textContent = (a.online ? '🟢 ' : '⚪ ') + a.name + (a.online ? '' : ' (offline)');
-    agentSel.appendChild(o);
+function loadAgents(preferId) {
+  return getJSON('agents').then(function (d) {
+    agentSel.innerHTML = '';
+    if (!d.ok || !d.agents.length) { state.agent = null; setStatus('No PCs connected yet — run the agent on a PC.'); return; }
+    d.agents.forEach(function (a) {
+      var o = document.createElement('option');
+      o.value = a.id;
+      o.textContent = (a.online ? '🟢 ' : '⚪ ') + a.name + (a.online ? '' : ' (offline)');
+      agentSel.appendChild(o);
+    });
+    var has = function (id) { return d.agents.some(function (a) { return a.id === id; }); };
+    var pick = (preferId && has(preferId)) ? preferId : d.agents[0].id;
+    agentSel.value = pick;
+    state.agent = pick;
+    refreshHostInfo();
+    load('');
   });
-  state.agent = d.agents[0].id;
-  refreshHostInfo();
-  load('');
-});
+}
+
+document.getElementById('btnRemovePc').onclick = function () {
+  if (!state.agent) return;
+  var opt = agentSel.options[agentSel.selectedIndex];
+  var label = opt ? opt.textContent : state.agent;
+  if (!confirm('Remove ' + label + ' from the list?\n(If its agent is still running, it will re-appear on the next check.)')) return;
+  var fd = new FormData();
+  fd.append('id', state.agent);
+  fetch(api('removeagent'), { method: 'POST', credentials: 'same-origin', body: fd })
+    .then(function (r) { return r.json(); })
+    .then(function (d) { if (!d.ok) { alert(d.error || 'error'); return; } loadAgents(); });
+};
+
+loadAgents();

@@ -14,6 +14,7 @@ require_login();
 <header class="topbar">
   <div class="brand">🗂 Remote File Manager</div>
   <select id="agentSel" class="agent-select" title="Client PC"></select>
+  <button class="btn ghost" id="btnRemovePc" title="Remove this PC from the list">✕</button>
   <div id="hostinfo" class="muted"></div>
   <div class="spacer"></div>
   <a class="btn ghost" href="logout.php">Sign out</a>
