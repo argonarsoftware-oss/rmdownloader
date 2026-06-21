@@ -1,31 +1,35 @@
 <?php
-// Browser-facing proxy. The browser never sees any agent token.
+// Browser-facing proxy. Enqueues a command for the selected PC's agent and waits
+// for the result via the file queue. The browser never sees agent tokens.
 require_once __DIR__ . '/lib.php';
+app_session();
 
-if (!is_logged_in()) {
+if (!api_authorized()) {
     http_response_code(401);
     header('Content-Type: application/json');
-    echo json_encode(array('ok' => false, 'error' => 'Not logged in'));
+    echo json_encode(array('ok' => false, 'error' => 'Not authorized (login or valid API key required)'));
     exit;
 }
+// Release the session lock so multiple browser requests can run concurrently
+// while we wait on the queue.
+session_write_close();
+@set_time_limit(45);
 
 $action = isset($_GET['action']) ? $_GET['action'] : '';
 
-// List configured client PCs for the agent picker (no tokens/urls leaked).
+// PC picker list (no tokens leaked).
 if ($action === 'agents') {
     header('Content-Type: application/json');
     $out = array();
     foreach (rm_agents() as $id => $a) {
-        $out[] = array('id' => $id, 'name' => $a['name']);
+        $out[] = array('id' => $id, 'name' => $a['name'], 'online' => is_online($id));
     }
     echo json_encode(array('ok' => true, 'agents' => $out));
     exit;
 }
 
-// Everything else targets a specific agent.
-$agent = current_agent();
-if ($agent === null) {
-    http_response_code(400);
+$id = current_agent_id();
+if ($id === null) {
     header('Content-Type: application/json');
     echo json_encode(array('ok' => false, 'error' => 'No agents configured'));
     exit;
@@ -33,47 +37,56 @@ if ($agent === null) {
 
 $path = isset($_REQUEST['path']) ? $_REQUEST['path'] : '';
 
+// Send one command to the agent and wait for its result.
+function run($id, $op, $args = array(), $timeout = 30) {
+    if (!is_online($id)) {
+        return array('ok' => false, 'error' => 'Agent is offline (not connected).');
+    }
+    $cmdId = enqueue_command($id, $op, $args);
+    $res = fetch_result($id, $cmdId, $timeout);
+    if ($res === null) {
+        return array('ok' => false, 'error' => 'Timed out waiting for the agent.');
+    }
+    return $res;
+}
+
 switch ($action) {
 
     case 'info':
         header('Content-Type: application/json');
-        echo json_encode(agent_json($agent, '/api/info'));
+        echo json_encode(run($id, 'info', array(), 10));
         break;
 
     case 'list':
         header('Content-Type: application/json');
-        echo json_encode(agent_json($agent, '/api/list', array('path' => $path)));
+        echo json_encode(run($id, 'list', array('path' => $path)));
         break;
 
     case 'read':
         header('Content-Type: application/json');
-        echo json_encode(agent_json($agent, '/api/read', array('path' => $path)));
-        break;
-
-    case 'download':
-        agent_call($agent, '/api/download', array('path' => $path), 'GET', null, true);
+        echo json_encode(run($id, 'read', array('path' => $path)));
         break;
 
     case 'mkdir':
         header('Content-Type: application/json');
         $target = rtrim($path, '\\/') . '\\' . $_POST['name'];
-        echo json_encode(agent_json($agent, '/api/mkdir', array('path' => $target), 'POST'));
+        echo json_encode(run($id, 'mkdir', array('path' => $target)));
         break;
 
     case 'delete':
         header('Content-Type: application/json');
-        echo json_encode(agent_json($agent, '/api/delete', array('path' => $path), 'POST'));
+        echo json_encode(run($id, 'delete', array('path' => $path)));
         break;
 
     case 'rename':
         header('Content-Type: application/json');
-        echo json_encode(agent_json($agent, '/api/rename', array('path' => $path, 'newName' => $_POST['newName']), 'POST'));
+        echo json_encode(run($id, 'rename', array('path' => $path, 'newName' => $_POST['newName'])));
         break;
 
     case 'save':
         header('Content-Type: application/json');
         $content = isset($_POST['content']) ? $_POST['content'] : '';
-        echo json_encode(agent_json($agent, '/api/write', array('path' => $path), 'POST', $content));
+        echo json_encode(run($id, 'write', array('path' => $path, 'content' => $content)));
         break;
 
     case 'upload':
@@ -82,11 +95,24 @@ switch ($action) {
             echo json_encode(array('ok' => false, 'error' => 'Upload failed'));
             break;
         }
-        $dir = rtrim($path, '\\/');
-        $name = basename($_FILES['file']['name']);
-        $target = $dir . '\\' . $name;
-        $bytes = file_get_contents($_FILES['file']['tmp_name']);
-        echo json_encode(agent_json($agent, '/api/write', array('path' => $target), 'POST', $bytes));
+        $target = rtrim($path, '\\/') . '\\' . basename($_FILES['file']['name']);
+        $b64 = base64_encode(file_get_contents($_FILES['file']['tmp_name']));
+        echo json_encode(run($id, 'write', array('path' => $target, 'content_b64' => $b64), 60));
+        break;
+
+    case 'download':
+        $res = run($id, 'download', array('path' => $path), 60);
+        if (empty($res['ok'])) {
+            header('Content-Type: application/json');
+            echo json_encode($res);
+            break;
+        }
+        $bytes = base64_decode($res['content_b64']);
+        $name = isset($res['name']) ? $res['name'] : 'download';
+        header('Content-Type: application/octet-stream');
+        header('Content-Disposition: attachment; filename="' . str_replace('"', '', $name) . '"');
+        header('Content-Length: ' . strlen($bytes));
+        echo $bytes;
         break;
 
     default:

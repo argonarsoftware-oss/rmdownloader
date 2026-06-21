@@ -216,7 +216,8 @@ getJSON('agents').then(function (d) {
   agentSel.innerHTML = '';
   d.agents.forEach(function (a) {
     var o = document.createElement('option');
-    o.value = a.id; o.textContent = a.name;
+    o.value = a.id;
+    o.textContent = (a.online ? '🟢 ' : '⚪ ') + a.name + (a.online ? '' : ' (offline)');
     agentSel.appendChild(o);
   });
   state.agent = d.agents[0].id;

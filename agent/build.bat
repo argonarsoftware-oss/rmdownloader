@@ -10,7 +10,7 @@ if not exist "%CSC%" (
   popd
   exit /b 1
 )
-"%CSC%" /nologo /optimize /target:exe /out:Agent.exe Agent.cs
+"%CSC%" /nologo /optimize /target:exe /out:Agent.exe /r:System.Web.Extensions.dll Agent.cs
 if %errorlevel%==0 (echo Built Agent.exe) else (echo Build FAILED)
 popd
 endlocal

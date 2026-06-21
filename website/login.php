@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/lib.php';
+app_session();
 
 $error = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -26,7 +27,7 @@ if (is_logged_in()) { header('Location: index.php'); exit; }
 <body class="login-body">
 <form class="login-card" method="post" autocomplete="off">
   <h1>Remote File Manager</h1>
-  <p class="muted">Agent: <?php echo htmlspecialchars(AGENT_URL); ?></p>
+  <p class="muted">Sign in to manage your connected PCs.</p>
   <?php if ($error): ?><div class="error"><?php echo htmlspecialchars($error); ?></div><?php endif; ?>
   <input type="password" name="password" placeholder="Password" autofocus required>
   <button type="submit">Sign in</button>

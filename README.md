@@ -1,20 +1,20 @@
 # rmdownloader — Remote File Manager (agent + web UI)
 
-Manage a Windows machine's drives/folders (C:\ etc.) from a browser.
+Manage a Windows machine's drives/folders (C:\ etc.) from a browser — even when the PC is
+behind home NAT. The agent **reverse-connects out** to your web server, so there's no inbound
+port, no tunnel, no port-forwarding. You just run the agent.
 
 ```
-Browser ──HTTPS──> PHP site (VPS / XAMPP, Apache)  ──HTTP+token──>  Agent.exe ──> filesystem
-          login              proxy (api.php)            X-Agent-Token        on the Windows host
+Browser ──HTTPS──> PHP site (VPS / XAMPP)  <══poll/result══  Agent.exe ──> filesystem
+          login          file queue (data/)   outbound HTTPS   on each Windows PC
 ```
 
-* **Agent.exe** — a tiny (~15 KB) self-contained C# program. Exposes a token-protected
-  HTTP file API (list / read / write / upload / download / mkdir / rename / delete).
-  Runs on the Windows machine you want to manage.
-* **website/** — PHP app served by Apache (XAMPP locally, or a Linux VPS). It is the UI
-  **and** a server-side proxy that injects the secret token, so the browser never sees it,
-  and enforces a login.
-
-The browser only ever talks to the PHP site (same origin). The PHP site talks to the agent.
+* **Agent.exe** — a tiny (~13 KB) self-contained C# program. It long-polls the site for
+  commands, runs them locally (list / read / write / upload / download / mkdir / rename /
+  delete), and posts results back. Outbound HTTPS only.
+* **website/** — PHP app (XAMPP locally, or Apache on a VPS). The UI plus a file-based command
+  queue. The browser talks only to the site; the site never connects to the PC — the agent
+  pulls work from it.
 
 ---
 
@@ -38,13 +38,12 @@ copy agent.conf.sample agent.conf
 Edit `agent.conf`:
 
 ```ini
-token=<a long random secret>     # must match the website
-host=127.0.0.1                   # see "Connecting the VPS to the agent" below
-port=8765
+server=https://dos.argonar.co    # your web server
+token=<a long random secret>     # must match this PC's token in the website config
 root=                            # optional sandbox, e.g. C:\shared (empty = whole machine)
 ```
 
-Run it once to test:  `Agent.exe`
+Run it once to test:  `Agent.exe`  → it prints *Connecting…* and the PC shows 🟢 online in the UI.
 
 ## 3. Auto-start at boot (Task Scheduler)
 
@@ -55,21 +54,20 @@ cd agent
 powershell -ExecutionPolicy Bypass -File install-startup.ps1
 ```
 
-This registers a task `rmdownloaderAgent` that launches `Agent.exe` at every boot as
-SYSTEM (no login needed) and restarts it if it ever exits. Remove with
-`uninstall-startup.ps1`.
+Registers a task `rmdownloaderAgent` that launches `Agent.exe` at every boot as SYSTEM
+(no login needed) and restarts it if it ever exits. Remove with `uninstall-startup.ps1`.
 
 ---
 
 ## 4. Deploy the website
 
 ### Local (XAMPP)
-Copy `website\` into `C:\xampp\htdocs\filemanager`, then
-`copy config.sample.php config.php`, edit it, and open `http://localhost/filemanager/`.
+Copy `website\` into `C:\xampp\htdocs\filemanager`, then `copy config.sample.php config.php`,
+edit it, and open `http://localhost/filemanager/`.
 
-### VPS (172.104.186.245, Apache, git clone)
+### VPS (Apache, git clone)
 
-Public URL: **http://dos.argonar.co** (add an A record `dos.argonar.co → 172.104.186.245`).
+Public URL: **https://dos.argonar.co** (add an A record `dos.argonar.co → 172.104.186.245`).
 
 ```bash
 cd /var/www
@@ -79,55 +77,66 @@ cp config.sample.php config.php
 nano config.php            # set the rm_agents() list + WEB_PASSWORD
 ```
 
-Point Apache at `…/rmdownloader/website` (see `deploy/apache-vhost.conf`) and reload:
+Point Apache at `…/rmdownloader/website` (see `deploy/apache-vhost.conf`), make the queue
+writable, and reload:
 
 ```bash
 sudo cp /var/www/rmdownloader/deploy/apache-vhost.conf /etc/apache2/sites-available/rmdownloader.conf
 sudo a2ensite rmdownloader && sudo a2enmod rewrite headers
-sudo systemctl reload apache2
 sudo chown -R www-data:www-data /var/www/rmdownloader/website
+sudo chmod -R 775 /var/www/rmdownloader/website/data
+sudo systemctl reload apache2
+sudo certbot --apache -d dos.argonar.co     # HTTPS
 ```
 
 Update later with:  `cd /var/www/rmdownloader && git pull`  (your `config.php` is git-ignored,
 so it survives pulls).
 
+> There is a step-by-step illustrated version in **`vps-setup-guide.html`** (open it in a browser).
+
 ---
 
 ## Multiple client PCs
 
-The site manages many machines. List them in `rm_agents()` in `config.php`; each gets its
-own `url` + `token`, and the web UI shows a **PC picker** in the top bar. To add a PC:
-build/run `Agent.exe` on it, give it a unique token, make it reachable from the VPS
-(below), and add an entry to `rm_agents()`.
+The site manages many machines. List them in `rm_agents()` in `config.php` — each entry is just
+a **name + token** (no URL/port, because the agent dials out). The web UI shows a **PC picker**
+with 🟢/⚪ online status. To add a PC: build/run `Agent.exe` on it with `server=` your site and a
+unique `token`, then add the matching entry to `rm_agents()`.
 
-## Connecting the VPS to each agent
-
-The VPS must be able to reach every agent. Pick one per machine:
-
-### A. Reverse SSH tunnel (recommended — works behind home NAT, encrypted)
-On each Windows machine, keep a tunnel open to the VPS, using a **distinct VPS port per PC**:
-
-```bash
-# PC1
-ssh -N -R 8765:127.0.0.1:8765 youruser@172.104.186.245
-# PC2 (run from the second machine)
-ssh -N -R 8766:127.0.0.1:8765 youruser@172.104.186.245
+```php
+function rm_agents() {
+    return array(
+        'pc1' => array('name' => 'Main PC',   'token' => 'secret-1'),
+        'pc2' => array('name' => 'Office PC', 'token' => 'secret-2'),
+    );
+}
 ```
 
-Each agent uses `host=127.0.0.1`; in `rm_agents()` set that PC's `url` to the matching
-VPS port (`http://127.0.0.1:8765`, `http://127.0.0.1:8766`, …). Nothing is exposed to the
-public internet. Use `autossh` or a scheduled task to keep the tunnels alive.
+---
 
-### B. Direct / port-forwarded
-Set agent `host=0.0.0.0`, forward its TCP port to the Windows machine, and set that PC's
-`url` to `http://YOUR.PUBLIC.IP:PORT`. **Restrict the firewall so only 172.104.186.245 can
-reach the port** (the token is the only auth and the hop is plain HTTP).
+## Programmatic / API access (URL parameter)
+
+Set `API_KEY` in `config.php` to drive the API without a browser login — handy for scripts,
+`curl`, or Claude Code. Pass it as `?key=<API_KEY>` (or header `X-Api-Key`). The same
+`?agent=<id>` selects the target PC. Examples:
+
+```bash
+# list a directory as JSON
+curl "https://dos.argonar.co/api.php?action=list&agent=pc1&path=C:\\&key=$API_KEY"
+# which PCs are online
+curl "https://dos.argonar.co/api.php?action=agents&key=$API_KEY"
+# download a file
+curl -OJ "https://dos.argonar.co/api.php?action=download&agent=pc1&path=C:\\notes.txt&key=$API_KEY"
+```
+
+Actions: `agents`, `info`, `list`, `read`, `download` (GET); `mkdir`, `delete`, `rename`,
+`save`, `upload` (POST). Leave `API_KEY=''` to disable key access entirely.
 
 ---
 
 ## Security notes
-* Change `token` and `WEB_PASSWORD` to strong values before exposing anything.
-* Put the VPS site behind HTTPS (Let's Encrypt / `certbot`).
-* `root=` in `agent.conf` sandboxes the agent to one folder if you don't need full-disk access.
-* The agent grants whoever holds the token full read/write to the configured scope — treat it
-  like an SSH key. Only run this on machines and accounts you own.
+* Change every agent `token`, `WEB_PASSWORD`, and `API_KEY` to strong random values before exposing anything.
+* Put the VPS site behind HTTPS (Let's Encrypt / `certbot`). The API key and tokens ride on it.
+* `root=` in `agent.conf` sandboxes an agent to one folder if you don't need full-disk access.
+* The token grants whoever holds it full read/write to the configured scope — treat it like an
+  SSH key. Only run this on machines and accounts you own.

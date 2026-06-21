@@ -1,8 +1,17 @@
 <?php
-// Shared helpers: session/auth + agent HTTP client (server-side proxy).
+// Shared helpers: session/auth, agent lookup, and the file-based command queue.
+//
+// Queue layout (under DATA_DIR):
+//   data/<agentId>/cmd/<cmdId>.json   pending command (written by api.php, claimed by agent)
+//   data/<agentId>/res/<cmdId>.json   result          (written by agent.php, read by api.php)
+//   data/<agentId>/online             unix timestamp of the agent's last poll
 require_once __DIR__ . '/config.php';
 
-session_start();
+// ---- session / auth (browser only; the agent endpoint never starts a session) ----
+
+function app_session() {
+    if (session_status() === PHP_SESSION_NONE) session_start();
+}
 
 function is_logged_in() {
     if (empty($_SESSION['authed'])) return false;
@@ -16,16 +25,27 @@ function is_logged_in() {
 }
 
 function require_login() {
-    if (!is_logged_in()) {
-        header('Location: login.php');
-        exit;
-    }
+    app_session();
+    if (!is_logged_in()) { header('Location: login.php'); exit; }
 }
 
-// Resolve which agent (client PC) a request targets.
-// Reads ?agent=<id>; falls back to the first configured agent.
-// Returns the agent array (with 'id' added) or null if unknown.
-function current_agent() {
+// Authorize an API request: a logged-in browser session OR a valid API key
+// (?key=<API_KEY> or header X-Api-Key). Lets automation/Claude Code drive api.php.
+function api_authorized() {
+    if (is_logged_in()) return true;
+    if (defined('API_KEY') && API_KEY !== '') {
+        $k = '';
+        if (isset($_SERVER['HTTP_X_API_KEY'])) $k = $_SERVER['HTTP_X_API_KEY'];
+        elseif (isset($_REQUEST['key'])) $k = $_REQUEST['key'];
+        if ($k !== '' && hash_equals(API_KEY, $k)) return true;
+    }
+    return false;
+}
+
+// ---- agent identity ----
+
+// Browser side: which PC is targeted (?agent=<id>), validated against config.
+function current_agent_id() {
     $agents = rm_agents();
     if (empty($agents)) return null;
     $id = isset($_REQUEST['agent']) ? $_REQUEST['agent'] : null;
@@ -33,77 +53,104 @@ function current_agent() {
         $ids = array_keys($agents);
         $id = $ids[0];
     }
-    $a = $agents[$id];
-    $a['id'] = $id;
-    return $a;
+    return $id;
 }
 
-// Low-level call to a given agent. Returns [http_status, raw_body, content_type].
-// $agent: array with 'url' and 'token'. $method: GET|POST. $body: raw request body
-// for writes. $stream: if true, echo the body straight to the browser (downloads).
-function agent_call($agent, $path, $query = array(), $method = 'GET', $body = null, $stream = false) {
-    $url = $agent['url'] . $path;
-    if (!empty($query)) $url .= '?' . http_build_query($query);
-
-    $ch = curl_init($url);
-    curl_setopt($ch, CURLOPT_HTTPHEADER, array('X-Agent-Token: ' . $agent['token']));
-    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 120);
-    if ($method === 'POST') {
-        curl_setopt($ch, CURLOPT_POST, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, $body === null ? '' : $body);
+// Agent side: map an incoming token to its agent id.
+function agent_id_by_token($token) {
+    if ($token === '' || $token === null) return null;
+    foreach (rm_agents() as $id => $a) {
+        if (hash_equals($a['token'], $token)) return $id;
     }
-
-    if ($stream) {
-        // Pass agent's bytes through to the client as they arrive.
-        curl_setopt($ch, CURLOPT_HEADERFUNCTION, function ($ch, $header) {
-            $l = trim($header);
-            if (stripos($l, 'Content-Disposition:') === 0 ||
-                stripos($l, 'Content-Type:') === 0 ||
-                stripos($l, 'Content-Length:') === 0) {
-                header($l);
-            }
-            return strlen($header);
-        });
-        curl_setopt($ch, CURLOPT_WRITEFUNCTION, function ($ch, $data) {
-            echo $data;
-            return strlen($data);
-        });
-        curl_exec($ch);
-        $err = curl_error($ch);
-        curl_close($ch);
-        if ($err) { http_response_code(502); echo 'Agent error: ' . htmlspecialchars($err); }
-        return array(0, null, null);
-    }
-
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    $resp = curl_exec($ch);
-    $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $ctype = curl_getinfo($ch, CURLINFO_CONTENT_TYPE);
-    $err = curl_error($ch);
-    curl_close($ch);
-
-    if ($resp === false) {
-        return array(502, json_encode(array('ok' => false, 'error' => 'Cannot reach agent: ' . $err)), 'application/json');
-    }
-    return array($status, $resp, $ctype);
+    return null;
 }
 
-// Convenience: call agent expecting JSON, decode it. Returns array.
-function agent_json($agent, $path, $query = array(), $method = 'GET', $body = null) {
-    list($status, $resp, $ctype) = agent_call($agent, $path, $query, $method, $body);
-    $data = json_decode($resp, true);
-    if ($data === null) {
-        return array('ok' => false, 'error' => 'Bad response from agent (HTTP ' . $status . ')');
-    }
-    return $data;
+// ---- file queue ----
+
+function agent_dir($id) {
+    return DATA_DIR . '/' . preg_replace('/[^a-z0-9_]/i', '', $id);
 }
 
-function human_size($bytes) {
-    if ($bytes < 0) return '';
-    $u = array('B', 'KB', 'MB', 'GB', 'TB');
-    $i = 0;
-    $b = (float)$bytes;
-    while ($b >= 1024 && $i < count($u) - 1) { $b /= 1024; $i++; }
-    return ($i == 0 ? $b : number_format($b, 1)) . ' ' . $u[$i];
+function ensure_dir($d) {
+    if (!is_dir($d)) @mkdir($d, 0775, true);
+}
+
+function atomic_write($path, $data) {
+    $tmp = $path . '.tmp' . getmypid() . mt_rand();
+    file_put_contents($tmp, $data);
+    @rename($tmp, $path);
+}
+
+function gen_id() {
+    return bin2hex(random_bytes(8));
+}
+
+// Browser -> queue a command for the agent. Returns the command id.
+function enqueue_command($id, $op, $args = array()) {
+    $cmd = array_merge(array('id' => gen_id(), 'op' => $op, 'ts' => time()), $args);
+    $dir = agent_dir($id) . '/cmd';
+    ensure_dir($dir);
+    atomic_write($dir . '/' . $cmd['id'] . '.json', json_encode($cmd));
+    return $cmd['id'];
+}
+
+// Agent -> take all pending commands (and remove them from the queue).
+function claim_commands($id) {
+    $dir = agent_dir($id) . '/cmd';
+    ensure_dir($dir);
+    $out = array();
+    foreach (glob($dir . '/*.json') as $f) {
+        $c = json_decode(@file_get_contents($f), true);
+        @unlink($f);
+        if ($c) $out[] = $c;
+    }
+    return $out;
+}
+
+// Agent -> store a command's result.
+function store_result($id, $cmdId, $payload) {
+    $cmdId = preg_replace('/[^a-f0-9]/i', '', $cmdId);
+    if ($cmdId === '') return;
+    $dir = agent_dir($id) . '/res';
+    ensure_dir($dir);
+    atomic_write($dir . '/' . $cmdId . '.json', json_encode($payload));
+}
+
+// Browser -> wait up to $timeout seconds for a result, then consume it.
+function fetch_result($id, $cmdId, $timeout = 30) {
+    $cmdId = preg_replace('/[^a-f0-9]/i', '', $cmdId);
+    $f = agent_dir($id) . '/res/' . $cmdId . '.json';
+    $deadline = microtime(true) + $timeout;
+    while (microtime(true) < $deadline) {
+        if (is_file($f)) {
+            $d = json_decode(@file_get_contents($f), true);
+            @unlink($f);
+            return $d;
+        }
+        usleep(200000); // 0.2s
+    }
+    return null;
+}
+
+function touch_online($id) {
+    $dir = agent_dir($id);
+    ensure_dir($dir);
+    @file_put_contents($dir . '/online', time());
+}
+
+function is_online($id) {
+    $f = agent_dir($id) . '/online';
+    if (!is_file($f)) return false;
+    return (time() - (int)@file_get_contents($f)) < 60;
+}
+
+// Remove stale queue files so a long-offline agent doesn't accumulate junk.
+function cleanup_stale($id, $maxAge = 120) {
+    foreach (array('/cmd', '/res') as $sub) {
+        $dir = agent_dir($id) . $sub;
+        if (!is_dir($dir)) continue;
+        foreach (glob($dir . '/*.json') as $f) {
+            if (time() - @filemtime($f) > $maxAge) @unlink($f);
+        }
+    }
 }

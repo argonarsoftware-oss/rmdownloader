@@ -4,29 +4,29 @@
 // config.php is git-ignored so secrets are never committed and survive `git pull`.
 
 // ---- Agents (the client PCs you manage) ----
-// One entry per machine. 'id' is the array key (keep it short, [a-z0-9_]).
-//   url   = where Agent.exe is reachable FROM THIS WEB SERVER
+// One entry per machine. The agent reverse-connects to this site using its token;
+// you do NOT set any URL or port per PC. The token maps the connection to its id.
+//   id    = array key (short, [a-z0-9_])
+//   name  = label shown in the PC picker
 //   token = must match the "token" in that machine's agent.conf
-//
-// Reverse SSH tunnels (recommended): give each PC its own VPS port, e.g.
-//   PC1:  ssh -N -R 8765:127.0.0.1:8765 you@vps   -> url http://127.0.0.1:8765
-//   PC2:  ssh -N -R 8766:127.0.0.1:8765 you@vps   -> url http://127.0.0.1:8766
 function rm_agents() {
     return array(
-        'pc1' => array(
-            'name'  => 'Main PC',
-            'url'   => 'http://127.0.0.1:8765',
-            'token' => 'CHANGE-THIS-TO-A-LONG-RANDOM-SECRET-1',
-        ),
-        'pc2' => array(
-            'name'  => 'Office PC',
-            'url'   => 'http://127.0.0.1:8766',
-            'token' => 'CHANGE-THIS-TO-A-LONG-RANDOM-SECRET-2',
-        ),
+        'pc1' => array('name' => 'Main PC',   'token' => 'CHANGE-THIS-TO-A-LONG-RANDOM-SECRET-1'),
+        'pc2' => array('name' => 'Office PC', 'token' => 'CHANGE-THIS-TO-A-LONG-RANDOM-SECRET-2'),
         // Add more PCs here...
     );
 }
 
-// ---- Website login ----
+// Where the file-based command queue lives. Must be writable by Apache (www-data).
+define('DATA_DIR', __DIR__ . '/data');
+
+// ---- Website login (browser) ----
 define('WEB_PASSWORD', 'admin');     // CHANGE THIS
 define('SESSION_TIMEOUT', 1800);     // idle timeout, seconds
+
+// ---- API key (programmatic access, e.g. curl / Claude Code) ----
+// When set, api.php also accepts requests authenticated WITHOUT a browser login by
+// passing the key as ?key=<API_KEY> or the header  X-Api-Key: <API_KEY>.
+// Leave '' to disable key access (browser login only). Use a long random value over HTTPS.
+//   e.g.  GET api.php?action=list&agent=pc1&path=C:\&key=<API_KEY>
+define('API_KEY', '');

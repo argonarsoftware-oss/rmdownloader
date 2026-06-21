@@ -6,6 +6,10 @@ agent/agent.conf
 agent/Agent.exe
 agent/*.pdb
 
+# Runtime command queue (keep the folder + .htaccess, ignore live cmd/res files)
+website/data/*/
+website/data/*.json
+
 # Local test scratch
 _agenttest/
 
