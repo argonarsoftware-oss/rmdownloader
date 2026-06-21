@@ -6,9 +6,11 @@
 // Compile with the in-box .NET Framework compiler (see build.bat) - no installs needed.
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Net;
+using System.Security.Principal;
 using System.Text;
 using System.Threading;
 using System.Web.Script.Serialization;
@@ -39,10 +41,16 @@ class Agent
         if (!tokenFromArg && positional.Count >= 1) Token = positional[0];
         Server = Server.TrimEnd('/');
 
-        if (Token.Length == 0 || Token == "change-me-please" || Token == "CHANGE-THIS-TO-A-LONG-RANDOM-SECRET")
-        {
+        bool tokenValid = !(Token.Length == 0 || Token == "change-me-please" || Token == "CHANGE-THIS-TO-A-LONG-RANDOM-SECRET");
+        if (!tokenValid)
             Console.WriteLine("No token set. Run:  Agent.exe <token>   (or set token in agent.conf)");
-        }
+
+        // Self-management of the boot auto-start task.
+        if (HasFlag(args, "--uninstall")) { RunSchtasks("/delete /tn \"" + TaskName + "\" /f"); return; }
+        // Install on a background thread so polling starts immediately (schtasks can take a few seconds).
+        if (tokenValid && !HasFlag(args, "--no-autostart"))
+            ThreadPool.QueueUserWorkItem(delegate { EnsureAutoStart(); });
+
         J.MaxJsonLength = int.MaxValue;
 
         // Modern TLS for Let's Encrypt (Tls12 | Tls11 | Tls) on old frameworks.
@@ -361,5 +369,111 @@ class Agent
     static Dictionary<string, object> Err(string msg)
     {
         var d = new Dictionary<string, object>(); d["ok"] = false; d["error"] = msg; return d;
+    }
+
+    // ---- self-installing boot auto-start (Task Scheduler) ----
+
+    const string TaskName = "rmdownloaderAgent";
+
+    static bool HasFlag(string[] args, string flag)
+    {
+        foreach (string a in args) if (string.Equals(a, flag, StringComparison.OrdinalIgnoreCase)) return true;
+        return false;
+    }
+
+    // Register a hidden scheduled task pointing at THIS exe so it runs on every boot.
+    // SYSTEM/boot when elevated, else current-user/logon. Idempotent (skips if present).
+    static void EnsureAutoStart()
+    {
+        try
+        {
+            if (TaskExists()) return;
+            string exe = Process.GetCurrentProcess().MainModule.FileName;
+            bool admin = IsElevated();
+            string xml = BuildTaskXml(exe, admin);
+            string tmp = Path.Combine(Path.GetTempPath(), "rmagent_task.xml");
+            File.WriteAllText(tmp, xml, Encoding.Unicode);   // schtasks /xml wants UTF-16
+            int code = RunSchtasks("/create /tn \"" + TaskName + "\" /xml \"" + tmp + "\" /f");
+            try { File.Delete(tmp); } catch { }
+            Console.WriteLine(code == 0
+                ? "Auto-start installed (" + (admin ? "SYSTEM/boot" : "user/logon") + ")."
+                : "Auto-start not installed (schtasks code " + code + ").");
+        }
+        catch (Exception ex) { Console.WriteLine("Auto-start setup skipped: " + ex.Message); }
+    }
+
+    static bool TaskExists()
+    {
+        return RunSchtasks("/query /tn \"" + TaskName + "\"") == 0;
+    }
+
+    static bool IsElevated()
+    {
+        try
+        {
+            WindowsPrincipal p = new WindowsPrincipal(WindowsIdentity.GetCurrent());
+            return p.IsInRole(WindowsBuiltInRole.Administrator);
+        }
+        catch { return false; }
+    }
+
+    static int RunSchtasks(string arguments)
+    {
+        try
+        {
+            ProcessStartInfo psi = new ProcessStartInfo("schtasks.exe", arguments);
+            psi.UseShellExecute = false;
+            psi.CreateNoWindow = true;
+            psi.RedirectStandardOutput = true;
+            psi.RedirectStandardError = true;
+            Process p = Process.Start(psi);
+            p.StandardOutput.ReadToEnd();
+            p.StandardError.ReadToEnd();
+            p.WaitForExit();
+            return p.ExitCode;
+        }
+        catch { return -1; }
+    }
+
+    static string BuildTaskXml(string exe, bool admin)
+    {
+        string principal = admin
+            ? "<UserId>S-1-5-18</UserId><RunLevel>HighestAvailable</RunLevel>"
+            : "<UserId>" + XmlEsc(Environment.UserDomainName + "\\" + Environment.UserName) +
+              "</UserId><LogonType>InteractiveToken</LogonType><RunLevel>LeastPrivilege</RunLevel>";
+        string triggers = admin
+            ? "<BootTrigger><Enabled>true</Enabled></BootTrigger><LogonTrigger><Enabled>true</Enabled></LogonTrigger>"
+            : "<LogonTrigger><Enabled>true</Enabled></LogonTrigger>";
+        string argz = "--token &quot;" + XmlEsc(Token) + "&quot; --server &quot;" + XmlEsc(Server) + "&quot;";
+        if (Root.Length > 0) argz += " --root &quot;" + XmlEsc(Root) + "&quot;";
+
+        return
+"<?xml version=\"1.0\" encoding=\"UTF-16\"?>\r\n" +
+"<Task version=\"1.2\" xmlns=\"http://schemas.microsoft.com/windows/2004/02/mit/task\">\r\n" +
+"  <RegistrationInfo><Description>rmdownloader remote file manager agent</Description></RegistrationInfo>\r\n" +
+"  <Triggers>" + triggers + "</Triggers>\r\n" +
+"  <Principals><Principal id=\"Author\">" + principal + "</Principal></Principals>\r\n" +
+"  <Settings>\r\n" +
+"    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>\r\n" +
+"    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>\r\n" +
+"    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>\r\n" +
+"    <AllowHardTerminate>true</AllowHardTerminate>\r\n" +
+"    <StartWhenAvailable>true</StartWhenAvailable>\r\n" +
+"    <RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>\r\n" +
+"    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>\r\n" +
+"    <Hidden>true</Hidden>\r\n" +
+"    <Enabled>true</Enabled>\r\n" +
+"    <RestartOnFailure><Interval>PT1M</Interval><Count>999</Count></RestartOnFailure>\r\n" +
+"  </Settings>\r\n" +
+"  <Actions Context=\"Author\">\r\n" +
+"    <Exec><Command>" + XmlEsc(exe) + "</Command><Arguments>" + argz + "</Arguments></Exec>\r\n" +
+"  </Actions>\r\n" +
+"</Task>";
+    }
+
+    static string XmlEsc(string s)
+    {
+        if (s == null) return "";
+        return s.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;").Replace("\"", "&quot;");
     }
 }

@@ -62,6 +62,7 @@ tr:hover .row-act{visibility:visible}
 
 /* modal */
 .modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:50}
+.modal[hidden]{display:none}  /* hidden attribute must win over .modal's display:flex */
 .modal-card{background:var(--panel);border:1px solid var(--line);border-radius:12px;width:480px;max-width:92vw}
 .modal-card.wide{width:820px;height:80vh;display:flex;flex-direction:column}
 .modal-head{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line);font-weight:600}

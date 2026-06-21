@@ -97,15 +97,17 @@ curl -s -H "Host: dos.argonar.co" "http://localhost/api.php?action=agents&amp;ke
   <p>Now <a href="https://dos.argonar.co" target="_blank">https://dos.argonar.co</a> serves the login page.</p>
 
   <h2><span class="n">4</span> Build &amp; run the agent (on each Windows PC)</h2>
-  <p>No tunnel, no port-forwarding, <b>no config file</b>. The agent's server defaults to
+  <p>No tunnel, no port-forwarding, <b>no config file</b>. The agent is <b>windowless</b> (runs
+     silently in the background) and its server defaults to
      <code class="inline">https://dos.argonar.co</code> — you just pass the PC's token.</p>
   <div class="code"><button class="copy">Copy</button><pre>cd agent
 build.bat                       :: produces Agent.exe (no installs needed)
-Agent.exe &lt;PC1 token from step 2&gt;   :: test — prints "Connecting..."</pre></div>
-  <p>Then install boot auto-start (elevated PowerShell) — the token is baked into the task,
-     so it runs at every boot with no file to maintain:</p>
-  <div class="code"><button class="copy">Copy</button><pre>powershell -ExecutionPolicy Bypass -File install-startup.ps1 -Token &lt;PC1 token&gt;</pre></div>
-  <p class="muted">The task <code class="inline">rmdownloaderAgent</code> launches the agent at every boot as SYSTEM and restarts it if it exits. The PC shows <b>🟢 online</b> in the web UI's picker within seconds. (A different server? add <code class="inline">-Server https://your.host</code>.)</p>
+Agent.exe &lt;PC1 token from step 2&gt;</pre></div>
+  <p class="muted">On first run the agent <b>self-installs a hidden boot task</b>
+     (<code class="inline">rmdownloaderAgent</code>) pointing at itself — run elevated for
+     SYSTEM/boot, or normally for user/logon. It restarts on every boot, and the PC shows
+     <b>🟢 online</b> within seconds. (Skip with <code class="inline">--no-autostart</code>;
+     remove with <code class="inline">Agent.exe --uninstall</code>.)</p>
 
   <h2><span class="n">5</span> Use it</h2>
   <p>Open <a href="https://dos.argonar.co" target="_blank">https://dos.argonar.co</a>, sign in, pick the PC,

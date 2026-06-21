@@ -38,20 +38,22 @@ PC's token (must match that PC's token in the website config):
 Agent.exe <token>
 ```
 
-It prints *Connecting…* and the PC shows 🟢 online in the UI. Override the server with
-`Agent.exe <token> --server https://your.host`, or sandbox with `--root C:\shared`.
+The agent is **windowless** (runs silently in the background — no console) and the PC shows
+🟢 online in the UI. Override the server with `Agent.exe <token> --server https://your.host`,
+or sandbox with `--root C:\shared`.
 
 > Optional: `copy agent.conf.sample agent.conf` and set `server`/`token`/`root` there instead
 > of passing arguments. Command-line values override the file.
 
-## 3. Auto-start at boot (Task Scheduler)
+## 3. Auto-start at boot — automatic
 
-In an **elevated** PowerShell — the token is baked into the scheduled task:
+On first run the agent **self-installs a hidden Task Scheduler entry** (`rmdownloaderAgent`)
+pointing at itself, so it relaunches on every boot. Run **elevated** and it registers as
+SYSTEM/boot (up before login); run normally and it registers as current-user/logon.
 
-```powershell
-cd agent
-powershell -ExecutionPolicy Bypass -File install-startup.ps1 -Token <token>
-```
+* Skip self-install: `Agent.exe <token> --no-autostart`
+* Remove the task: `Agent.exe --uninstall`
+* Alternative explicit installer: `install-startup.ps1 -Token <token>`
 
 Registers a task `rmdownloaderAgent` that launches `Agent.exe` at every boot as SYSTEM
 (no login needed) and restarts it if it ever exits. Remove with `uninstall-startup.ps1`.
