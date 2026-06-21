@@ -29,29 +29,28 @@ build.bat
 
 Produces `agent\Agent.exe`.
 
-## 2. Configure the agent
+## 2. Run the agent
+
+No config file needed — the server defaults to `https://dos.argonar.co`, so just pass the
+PC's token (must match that PC's token in the website config):
 
 ```
-copy agent.conf.sample agent.conf
+Agent.exe <token>
 ```
 
-Edit `agent.conf`:
+It prints *Connecting…* and the PC shows 🟢 online in the UI. Override the server with
+`Agent.exe <token> --server https://your.host`, or sandbox with `--root C:\shared`.
 
-```ini
-server=https://dos.argonar.co    # your web server
-token=<a long random secret>     # must match this PC's token in the website config
-root=                            # optional sandbox, e.g. C:\shared (empty = whole machine)
-```
-
-Run it once to test:  `Agent.exe`  → it prints *Connecting…* and the PC shows 🟢 online in the UI.
+> Optional: `copy agent.conf.sample agent.conf` and set `server`/`token`/`root` there instead
+> of passing arguments. Command-line values override the file.
 
 ## 3. Auto-start at boot (Task Scheduler)
 
-In an **elevated** PowerShell:
+In an **elevated** PowerShell — the token is baked into the scheduled task:
 
 ```powershell
 cd agent
-powershell -ExecutionPolicy Bypass -File install-startup.ps1
+powershell -ExecutionPolicy Bypass -File install-startup.ps1 -Token <token>
 ```
 
 Registers a task `rmdownloaderAgent` that launches `Agent.exe` at every boot as SYSTEM

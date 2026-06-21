@@ -22,14 +22,27 @@ class Agent
 
     static void Main(string[] args)
     {
+        // Config sources, in increasing priority: built-in defaults -> agent.conf (optional)
+        // -> command-line. No config file is required: just run  Agent.exe <token>.
         LoadConfig();
-        for (int i = 0; i < args.Length - 1; i++)
+        var positional = new System.Collections.Generic.List<string>();
+        bool tokenFromArg = false;
+        for (int i = 0; i < args.Length; i++)
         {
-            if (args[i] == "--server") Server = args[i + 1];
-            else if (args[i] == "--token") Token = args[i + 1];
-            else if (args[i] == "--root") Root = args[i + 1];
+            string a = args[i];
+            if (a == "--server" && i + 1 < args.Length) { Server = args[++i]; }
+            else if (a == "--token" && i + 1 < args.Length) { Token = args[++i]; tokenFromArg = true; }
+            else if (a == "--root" && i + 1 < args.Length) { Root = args[++i]; }
+            else positional.Add(a);
         }
+        // First bare argument is the token:  Agent.exe <token>
+        if (!tokenFromArg && positional.Count >= 1) Token = positional[0];
         Server = Server.TrimEnd('/');
+
+        if (Token.Length == 0 || Token == "change-me-please" || Token == "CHANGE-THIS-TO-A-LONG-RANDOM-SECRET")
+        {
+            Console.WriteLine("No token set. Run:  Agent.exe <token>   (or set token in agent.conf)");
+        }
         J.MaxJsonLength = int.MaxValue;
 
         // Modern TLS for Let's Encrypt (Tls12 | Tls11 | Tls) on old frameworks.

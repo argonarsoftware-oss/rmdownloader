@@ -1,6 +1,9 @@
 # rmdownloader agent configuration (key=value, one per line).
-# Copy to agent.conf and edit. The agent only makes OUTBOUND calls to 'server',
-# so it works from behind home NAT with no port-forwarding or tunnel.
+# OPTIONAL — you can skip this file entirely and just run:  Agent.exe <token>
+# (server defaults to https://dos.argonar.co). Copy to agent.conf to set defaults here
+# instead. Command-line arguments override this file.
+# The agent only makes OUTBOUND calls to 'server', so it works from behind home NAT
+# with no port-forwarding or tunnel.
 
 # Your VPS site (HTTPS recommended).
 server=https://dos.argonar.co

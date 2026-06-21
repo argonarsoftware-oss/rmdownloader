@@ -72,108 +72,83 @@
     On each PC you literally just run the agent.
   </div>
 
-  <h2><span class="n">1</span> Point DNS at the VPS</h2>
-  <p>Create an <b>A record</b> so the subdomain resolves to your server:</p>
-  <div class="code"><button class="copy">Copy</button><pre>Type: A    Host: dos    Value: 172.104.186.245    TTL: 300</pre></div>
-  <p class="muted">Verify it has propagated:</p>
-  <div class="code"><button class="copy">Copy</button><pre>dig +short dos.argonar.co</pre></div>
+  <div class="note">✅ <b>Done already:</b> DNS A record (<code class="inline">dos.argonar.co → 172.104.186.245</code>)
+     and packages (Apache, PHP, git, curl + <code class="inline">rewrite</code>/<code class="inline">headers</code>).
+     Remaining steps below.</div>
 
-  <h2><span class="n">2</span> Install Apache, PHP &amp; tools (on the VPS)</h2>
-  <p>SSH into the VPS, then (Ubuntu/Debian):</p>
-  <div class="code"><button class="copy">Copy</button><pre>sudo apt update
-# Install only what's missing (skips anything already present):
-for pkg in apache2 php libapache2-mod-php php-curl git curl; do
-  if dpkg -s "$pkg" &gt;/dev/null 2&gt;&amp;1; then
-    echo "OK  $pkg already installed"
-  else
-    echo "..  installing $pkg"; sudo apt install -y "$pkg"
-  fi
-done
-sudo a2enmod rewrite headers
-
-# Verify versions:
-apache2 -v | head -1
-php -v | head -1
-git --version
-curl --version | head -1</pre></div>
-  <div class="note">The site needs the <b>php-curl</b> extension — that's how the PHP proxy reaches the agent.</div>
-
-  <h2><span class="n">3</span> Clone the repo into /var/www</h2>
+  <h2><span class="n">1</span> Clone the repo into /var/www</h2>
   <div class="code"><button class="copy">Copy</button><pre>cd /var/www
-sudo git clone https://github.com/argonarsoftware-oss/rmdownloader.git
-sudo chown -R $USER:$USER /var/www/rmdownloader</pre></div>
+git clone https://github.com/argonarsoftware-oss/rmdownloader.git</pre></div>
   <p class="muted">The repo is public, so this clone needs no login.</p>
 
-  <h2><span class="n">4</span> Create the config</h2>
-  <p>Copy the sample and edit it — this file is git-ignored, so your secrets are safe and survive updates.</p>
+  <h2><span class="n">2</span> Create the config (with generated secrets)</h2>
+  <p>This writes <code class="inline">config.php</code> (git-ignored) and prints the three secrets you need:
+     the web password, the API key, and the PC's agent token.</p>
   <div class="code"><button class="copy">Copy</button><pre>cd /var/www/rmdownloader/website
 cp config.sample.php config.php
-nano config.php</pre></div>
-  <p>Set one entry per PC in <code class="inline">rm_agents()</code> and a strong web password:</p>
-  <div class="code"><button class="copy">Copy</button><pre>function rm_agents() {
+TOKEN1=$(openssl rand -hex 24); APIKEY=$(openssl rand -hex 24); WEBPW=$(openssl rand -hex 6)
+cat &gt; config.php &lt;&lt;PHP
+&lt;?php
+function rm_agents() {
     return array(
-        'pc1' => array(
-            'name'  => 'Main PC',
-            'url'   => 'http://127.0.0.1:8765',   // VPS-side tunnel port (step 8)
-            'token' => 'a-long-random-secret-1',  // must match that PC's agent.conf
-        ),
-        // add more PCs here...
+        'pc1' =&gt; array('name' =&gt; 'Main PC', 'token' =&gt; '$TOKEN1'),
     );
 }
-define('WEB_PASSWORD', 'pick-a-strong-password');</pre></div>
+define('DATA_DIR', __DIR__ . '/data');
+define('WEB_PASSWORD', '$WEBPW');
+define('SESSION_TIMEOUT', 1800);
+define('API_KEY', '$APIKEY');
+PHP
+echo "Web password: $WEBPW"; echo "API key: $APIKEY"; echo "PC1 token: $TOKEN1"</pre></div>
+  <div class="note">Each PC is just a <b>name + token</b> — no URL/port, because the agent dials out. Save the printed <b>PC1 token</b> for that machine's <code class="inline">agent.conf</code>.</div>
 
-  <h2><span class="n">5</span> Configure the Apache vhost</h2>
-  <div class="code"><button class="copy">Copy</button><pre>sudo cp /var/www/rmdownloader/deploy/apache-vhost.conf \
-        /etc/apache2/sites-available/rmdownloader.conf
-sudo a2ensite rmdownloader
-sudo a2dissite 000-default        # optional: drop the default site
-sudo systemctl reload apache2</pre></div>
+  <h2><span class="n">3</span> Enable the Apache vhost</h2>
+  <p>Name-based virtual host — it sits alongside your other sites, so <b>don't</b> disable the default site.</p>
+  <div class="code"><button class="copy">Copy</button><pre>cp /var/www/rmdownloader/deploy/apache-vhost.conf /etc/apache2/sites-available/rmdownloader.conf
+a2ensite rmdownloader
+systemctl reload apache2</pre></div>
 
-  <h2><span class="n">6</span> Set permissions</h2>
+  <h2><span class="n">4</span> Set permissions &amp; verify</h2>
   <p>Apache (<code class="inline">www-data</code>) must own the site and be able to write the
      <code class="inline">data/</code> command queue:</p>
-  <div class="code"><button class="copy">Copy</button><pre>sudo chown -R www-data:www-data /var/www/rmdownloader/website
-sudo chmod -R 775 /var/www/rmdownloader/website/data</pre></div>
+  <div class="code"><button class="copy">Copy</button><pre>chown -R www-data:www-data /var/www/rmdownloader/website
+chmod -R 775 /var/www/rmdownloader/website/data
 
-  <h2><span class="n">7</span> Add HTTPS (Let's Encrypt)</h2>
-  <div class="code"><button class="copy">Copy</button><pre>sudo apt install -y certbot python3-certbot-apache
-sudo certbot --apache -d dos.argonar.co</pre></div>
+# Smoke test (works even before DNS/HTTPS); returns JSON, pc1 offline until the agent connects:
+curl -s -H "Host: dos.argonar.co" "http://localhost/api.php?action=agents&amp;key=$APIKEY"; echo</pre></div>
+
+  <h2><span class="n">5</span> Add HTTPS (Let's Encrypt)</h2>
+  <div class="code"><button class="copy">Copy</button><pre>certbot --apache -d dos.argonar.co</pre></div>
   <p>Now <a href="https://dos.argonar.co" target="_blank">https://dos.argonar.co</a> serves the login page.</p>
 
-  <h2><span class="n">8</span> Build &amp; run the agent (on each Windows PC)</h2>
-  <p>No tunnel, no port-forwarding. The agent connects <b>out</b> to your VPS, so you just run it.</p>
+  <h2><span class="n">6</span> Build &amp; run the agent (on each Windows PC)</h2>
+  <p>No tunnel, no port-forwarding, <b>no config file</b>. The agent's server defaults to
+     <code class="inline">https://dos.argonar.co</code> — you just pass the PC's token.</p>
   <div class="code"><button class="copy">Copy</button><pre>cd agent
 build.bat                       :: produces Agent.exe (no installs needed)
-copy agent.conf.sample agent.conf
-notepad agent.conf              :: set server=https://dos.argonar.co and the PC's token</pre></div>
-  <p>Set <code class="inline">agent.conf</code> on each PC — the <code class="inline">token</code> must
-     match that PC's entry in <code class="inline">rm_agents()</code>:</p>
-  <div class="code"><button class="copy">Copy</button><pre>server=https://dos.argonar.co
-token=a-long-random-secret-1
-# root=        (optional sandbox folder)</pre></div>
-  <p>Run <code class="inline">Agent.exe</code> once to confirm it prints <i>Connecting…</i>, then
-     install boot auto-start (elevated PowerShell):</p>
-  <div class="code"><button class="copy">Copy</button><pre>powershell -ExecutionPolicy Bypass -File install-startup.ps1</pre></div>
-  <p class="muted">The task <code class="inline">rmdownloaderAgent</code> launches the agent at every boot as SYSTEM and restarts it if it exits. The PC shows <b>🟢 online</b> in the web UI's picker within seconds.</p>
+Agent.exe &lt;PC1 token from step 2&gt;   :: test — prints "Connecting..."</pre></div>
+  <p>Then install boot auto-start (elevated PowerShell) — the token is baked into the task,
+     so it runs at every boot with no file to maintain:</p>
+  <div class="code"><button class="copy">Copy</button><pre>powershell -ExecutionPolicy Bypass -File install-startup.ps1 -Token &lt;PC1 token&gt;</pre></div>
+  <p class="muted">The task <code class="inline">rmdownloaderAgent</code> launches the agent at every boot as SYSTEM and restarts it if it exits. The PC shows <b>🟢 online</b> in the web UI's picker within seconds. (A different server? add <code class="inline">-Server https://your.host</code>.)</p>
 
-  <h2><span class="n">9</span> Use it</h2>
+  <h2><span class="n">7</span> Use it</h2>
   <p>Open <a href="https://dos.argonar.co" target="_blank">https://dos.argonar.co</a>, sign in, pick the PC,
      and browse its drives. Files download/upload straight through the VPS.</p>
 
-  <h2><span class="n">10</span> Updating later — manual</h2>
+  <h2><span class="n">8</span> Updating later — manual</h2>
   <p>There is <b>no auto-deploy</b>. When you want the VPS to pick up new commits, pull by hand:</p>
   <div class="code"><button class="copy">Copy</button><pre>cd /var/www/rmdownloader
 git pull
-sudo chown -R www-data:www-data website</pre></div>
+chown -R www-data:www-data website</pre></div>
   <p class="muted">Your <code class="inline">config.php</code> is git-ignored, so <code class="inline">git pull</code> never overwrites it.</p>
 
   <div class="warn">
     <b>Security checklist:</b>
     <ul style="margin-bottom:0">
-      <li>Use long random values for every agent <code class="inline">token</code> and for <code class="inline">WEB_PASSWORD</code>.</li>
-      <li>Keep HTTPS on (step 7). The agent token is the only auth between VPS and PC.</li>
-      <li>Prefer the SSH tunnel (step 8) over exposing the agent port publicly.</li>
-      <li>Optionally set <code class="inline">root=C:\some\folder</code> in <code class="inline">agent.conf</code> to sandbox the agent to one directory.</li>
+      <li>Use the generated random values for every agent <code class="inline">token</code>, <code class="inline">WEB_PASSWORD</code>, and <code class="inline">API_KEY</code>.</li>
+      <li>Keep HTTPS on (step 5) — the API key and tokens ride on it.</li>
+      <li>Optionally pass <code class="inline">-Root C:\some\folder</code> to <code class="inline">install-startup.ps1</code> to sandbox the agent to one directory.</li>
     </ul>
   </div>
 
