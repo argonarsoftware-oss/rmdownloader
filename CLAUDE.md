@@ -54,6 +54,14 @@ is not in `build.bat`, and never touches the queue/`data/`. Don't merge it into 
 - **Single-file exe (like Agent.exe):** `pyinstaller --onefile chrome_nav_monitor.py` →
   `dist/chrome_nav_monitor.exe` (runs with no Python installed). The `.py` is committed; the exe and
   PyInstaller `dist/`,`build_pyi/` output are git-ignored — build locally, same as `Agent.exe`.
+- **TODO / continuation (multi-tab auto-follow):** today it attaches to a single page target (the tab
+  picked from `/json`), so new tabs/windows aren't tracked. To follow the whole browser: connect to the
+  **browser** websocket (`/json/version` → `webSocketDebuggerUrl`) instead of one page, send
+  `Target.setDiscoverTargets {discover:true}`, and on each `Target.targetCreated` for a `page` use
+  `Target.attachToTarget {flat:true}` to get a `sessionId`. Then enable `Page`/`Network` *per session*
+  and route incoming events by their `sessionId` (CDP tags every event from an attached target with one).
+  Handle `Target.targetDestroyed` to drop closed tabs. Keep the current single-tab path as the default
+  and gate the new behavior behind a flag (e.g. `--all-tabs`) so old usage is unchanged.
 
 ## Queue protocol
 Browser/API → `enqueue_command` writes `data/<id>/cmd/<cmdId>.json` → agent long-poll claims it →
