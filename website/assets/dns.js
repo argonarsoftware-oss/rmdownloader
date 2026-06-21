@@ -139,7 +139,12 @@ function refreshHostInfo() {
 }
 
 // ---- wiring ----
-agentSel.onchange = function () { state.agent = this.value; refreshHostInfo(); loadAll(); };
+agentSel.onchange = function () {
+  state.agent = this.value;
+  try { localStorage.setItem('rmd_agent', this.value); } catch (e) {}
+  refreshHostInfo();
+  loadAll();
+};
 document.getElementById('btnReload').onclick = loadAll;
 document.getElementById('btnStatus').onclick = refreshStatus;
 document.getElementById('saveBlock').onclick = function () { saveFile(blockPath(), 'blockText', 'Block list'); };
@@ -169,8 +174,11 @@ getJSON('agents').then(function (d) {
     o.textContent = (a.online ? '🟢 ' : '⚪ ') + a.name + (a.online ? '' : ' (offline)');
     agentSel.appendChild(o);
   });
-  state.agent = d.agents[0].id;
-  agentSel.value = state.agent;
+  var saved = null; try { saved = localStorage.getItem('rmd_agent'); } catch (e) {}
+  var pick = (saved && d.agents.some(function (a) { return a.id === saved; })) ? saved : d.agents[0].id;
+  state.agent = pick;
+  agentSel.value = pick;
+  try { localStorage.setItem('rmd_agent', pick); } catch (e) {}
   refreshHostInfo();
   loadAll();
 });

@@ -274,6 +274,7 @@ function refreshHostInfo() {
 var agentSel = document.getElementById('agentSel');
 agentSel.onchange = function () {
   state.agent = this.value;
+  try { localStorage.setItem('rmd_agent', this.value); } catch (e) {}
   refreshHostInfo();
   load('');               // reset to drive list on the newly selected PC
 };
@@ -290,9 +291,12 @@ function loadAgents(preferId) {
       agentSel.appendChild(o);
     });
     var has = function (id) { return d.agents.some(function (a) { return a.id === id; }); };
-    var pick = (preferId && has(preferId)) ? preferId : d.agents[0].id;
+    var saved = null; try { saved = localStorage.getItem('rmd_agent'); } catch (e) {}
+    var prefer = preferId || saved;
+    var pick = (prefer && has(prefer)) ? prefer : d.agents[0].id;
     agentSel.value = pick;
     state.agent = pick;
+    try { localStorage.setItem('rmd_agent', pick); } catch (e) {}
     refreshHostInfo();
     load('');
   });
