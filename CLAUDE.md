@@ -5,11 +5,16 @@ The agent **reverse-connects out** to the site (outbound HTTPS long-poll), so no
 or tunnel is needed — you just run the agent.
 
 ## Layout
-- `agent/` — native Windows companion (`Agent.exe`), an outbound HTTP polling client.
-  - `Agent.cs` — single-file C# source (in-box .NET Framework 4 compiler; uses
-    `System.Web.Extensions` JavaScriptSerializer for JSON). Polls `agent.php`, runs commands,
-    posts results.
-  - `build.bat` — compiles with `csc.exe` (`pushd %~dp0`, `/r:System.Web.Extensions.dll`).
+- `agent/` — native Windows companion, an outbound HTTP polling client. Two exes:
+  - `Agent.cs` → `Agent.exe` — the **worker**. Single-file C# (in-box .NET Framework 4 compiler;
+    `System.Web.Extensions` JavaScriptSerializer for JSON). Polls `agent.php`, runs commands, posts
+    results. Writes `worker.hb` each cycle (heartbeat for the supervisor). The `update` op stages
+    `Agent.new.exe` + `update.flag` then exits for the supervisor to swap.
+  - `Supervisor.cs` → `agentsvc.exe` — the **supervisor** (the boot task runs THIS). Keeps the worker
+    alive, applies updates (swap → probation via `worker.hb` → auto-rollback to `Agent.prev.exe` if the
+    new build doesn't check in), and keepalive-`ping`s the server during a swap so the PC stays online.
+    Tiny/stable; rarely needs updating itself.
+  - `build.bat` — compiles BOTH with `csc.exe` (`Agent.exe` needs `/r:System.Web.Extensions.dll`).
   - `agent.conf.sample` — per-machine config: `server`, `token`, `root`. Copied to `agent.conf`.
   - `install-startup.ps1` / `uninstall-startup.ps1` — Task Scheduler boot auto-start (SYSTEM).
 - `website/` — PHP app (XAMPP locally / Apache on the VPS).
@@ -51,9 +56,23 @@ redeploying all of them, the protocol is **additive**:
 - Bump `AGENT_VERSION` when behavior changes; only rebuild/redeploy agents for features that need
   new data *from* the agent (e.g. drive labels). Web-only changes need no agent rebuild.
 - **One agent per machine.** AgentId is the MachineGuid, so two processes would share one queue
-  and race for commands. A named mutex (`Global\rmdownloader-agent-<id>`) enforces single-instance:
-  a second copy prints a message and exits. To upgrade: **stop the running agent first** (its lock
-  releases), then start the new build — starting a new one while the old runs makes the *new* one exit.
+  and race for commands. Named mutexes enforce single-instance (`Global\rmdownloader-agent-<id>` for
+  the worker, `…-agentsvc-<id>` for the supervisor): a second copy prints a message and exits.
+
+## Updating agents (supervisor model)
+The boot task runs `agentsvc.exe`, which child-manages `Agent.exe`. To update the worker remotely:
+send the `update` op with the new `Agent.exe` as base64 (`exe` arg). The worker stages it and exits;
+the supervisor backs up the old exe, swaps in the new one, and starts it on **probation** — the new
+worker must refresh `worker.hb` within ~90s or it's **auto-rolled-back** to `Agent.prev.exe`. The
+worker (not the supervisor) is the boot exe-free, swappable part, so this avoids the file-lock /
+self-kill problem. During the swap the supervisor `ping`s `agent.php?action=ping` (marks online
+without claiming commands) so the connection isn't lost. Roll out to a **canary PC first**, confirm
+it reconnects with the new version, then the fleet — a bad worker fleet-wide would otherwise need the
+manual recipe below. The supervisor itself changes rarely; updating it uses the one-time migration:
+- **Migration / supervisor update (one-time, via the old agent's `exec`):** upload `agentsvc.exe`
+  (+ new `Agent.exe`) next to the current exe, then from a *detached* one-shot scheduled task:
+  `schtasks /end /tn rmdownloaderAgent` → re-create the task to run `agentsvc.exe` → `schtasks /run`.
+  (Detached so ending the agent doesn't kill the updater.)
 
 ## Build / run
 - Agent: `cd agent && build.bat`, set `agent.conf`, run `Agent.exe` (auto-start via the PS1).

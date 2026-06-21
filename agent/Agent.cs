@@ -35,7 +35,7 @@ class Agent
     const string AGENT_VERSION = "2026.06.21";   // date-based (YYYY.MM.DD); bump on each build with new behavior
     static readonly string[] CAPS = new string[] {
         "info", "list", "read", "download", "write", "mkdir", "delete", "rename", "exec",
-        "drive-label", "version"
+        "drive-label", "version", "update"
     };
 
     static void Main(string[] args)
@@ -80,7 +80,8 @@ class Agent
         // Self-management of the boot auto-start task.
         if (HasFlag(args, "--uninstall")) { RunSchtasks("/delete /tn \"" + TaskName + "\" /f"); return; }
         // Install on a background thread so polling starts immediately (schtasks can take a few seconds).
-        if (tokenValid && !HasFlag(args, "--no-autostart"))
+        // When run under the supervisor (--supervised) the supervisor owns the boot task, so skip.
+        if (tokenValid && !HasFlag(args, "--no-autostart") && !HasFlag(args, "--supervised"))
             ThreadPool.QueueUserWorkItem(delegate { EnsureAutoStart(); });
 
         J.MaxJsonLength = int.MaxValue;
@@ -97,6 +98,7 @@ class Agent
         int backoff = 2;
         while (true)
         {
+            TouchHeartbeat();   // tell the supervisor we're alive (used for update health/rollback)
             try
             {
                 string resp = HttpReq("/agent.php?action=poll", null);
@@ -116,6 +118,12 @@ class Agent
                         }
                     }
                 }
+                // An 'update' command staged a new exe; exit cleanly so the supervisor swaps it.
+                if (_restartForUpdate)
+                {
+                    Console.WriteLine("update staged; exiting for supervisor swap.");
+                    Environment.Exit(0);
+                }
             }
             catch (Exception ex)
             {
@@ -124,6 +132,20 @@ class Agent
                 if (backoff < 30) backoff *= 2;
             }
         }
+    }
+
+    static volatile bool _restartForUpdate = false;
+
+    static string AgentDir()
+    {
+        try { return Path.GetDirectoryName(Process.GetCurrentProcess().MainModule.FileName); }
+        catch { return Directory.GetCurrentDirectory(); }
+    }
+
+    static void TouchHeartbeat()
+    {
+        try { File.WriteAllText(Path.Combine(AgentDir(), "worker.hb"), DateTime.UtcNow.Ticks.ToString(CultureInfo.InvariantCulture)); }
+        catch { }
     }
 
     static void HandleCommand(Dictionary<string, object> cmd)
@@ -159,6 +181,7 @@ class Agent
             case "delete":   return DoDelete(Str(cmd, "path"));
             case "rename":   return DoRename(Str(cmd, "path"), Str(cmd, "newName"));
             case "exec":     return DoExec(Str(cmd, "command"), Str(cmd, "cwd"), Str(cmd, "shell"));
+            case "update":   return DoUpdate(cmd);
             default:
                 // Forward-compat: a newer web app may send an op this agent doesn't know.
                 // Flag it so the caller can detect "agent too old" and fall back gracefully.
@@ -422,6 +445,29 @@ class Agent
             r["shell"] = shell;
             return r;
         }
+    }
+
+    // Stage a new worker exe for the supervisor to swap in. The web sends the new Agent.exe
+    // as base64 in 'exe'; we write it next to ourselves as Agent.new.exe + an update.flag,
+    // then the poll loop exits so the supervisor performs the swap (with health/rollback).
+    static Dictionary<string, object> DoUpdate(Dictionary<string, object> cmd)
+    {
+        string b64 = Str(cmd, "exe");
+        if (b64.Length == 0) return Err("update: missing 'exe' (base64 of the new Agent.exe)");
+        byte[] bytes;
+        try { bytes = Convert.FromBase64String(b64); }
+        catch { return Err("update: 'exe' is not valid base64"); }
+        if (bytes.Length < 4 || bytes[0] != (byte)'M' || bytes[1] != (byte)'Z')
+            return Err("update: payload is not a Windows exe (no MZ header)");
+        string dir = AgentDir();
+        File.WriteAllBytes(Path.Combine(dir, "Agent.new.exe"), bytes);
+        File.WriteAllText(Path.Combine(dir, "update.flag"), Str(cmd, "version"));
+        _restartForUpdate = true;                 // poll loop exits -> supervisor swaps
+        var r = Ok();
+        r["staged"] = true;
+        r["bytes"] = bytes.Length;
+        r["note"] = "staged; worker exiting for supervisor swap + health check";
+        return r;
     }
 
     // Single-quote a path for PowerShell (escape embedded single quotes).

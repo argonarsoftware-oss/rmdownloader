@@ -31,6 +31,14 @@ $action = isset($_GET['action']) ? $_GET['action'] : '';
 @set_time_limit(60);
 ignore_user_abort(true);
 
+// Lightweight keepalive (used by the supervisor to hold the PC "online" while it swaps the
+// worker during an update). Marks online WITHOUT claiming commands, so it never races the worker.
+if ($action === 'ping') {
+    touch_online($id);
+    echo json_encode(array('ok' => true));
+    exit;
+}
+
 if ($action === 'poll') {
     touch_online($id);
     cleanup_stale($id);

@@ -27,5 +27,9 @@ if not exist Embedded.cs >Embedded.cs echo static class Embed { public const str
 
 "%CSC%" /nologo /optimize /target:winexe /out:Agent.exe /r:System.Web.Extensions.dll Agent.cs Embedded.cs
 if %errorlevel%==0 (echo Built Agent.exe) else (echo Build FAILED)
+
+REM Supervisor (agentsvc.exe): the stable boot-task process that runs/updates the worker.
+"%CSC%" /nologo /optimize /target:winexe /out:agentsvc.exe Supervisor.cs Embedded.cs
+if %errorlevel%==0 (echo Built agentsvc.exe) else (echo Supervisor build FAILED)
 popd
 endlocal
