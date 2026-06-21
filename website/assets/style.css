@@ -1,0 +1,68 @@
+:root{
+  --bg:#0f1117; --panel:#171a23; --line:#262b38; --text:#e6e8ee; --muted:#8b93a7;
+  --accent:#4f8cff; --danger:#ef5350; --hover:#1f2533;
+}
+*{box-sizing:border-box}
+body{margin:0;font:14px/1.45 -apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--text)}
+.muted{color:var(--muted)}
+.spacer{flex:1}
+a{color:var(--accent);text-decoration:none}
+
+.topbar{display:flex;align-items:center;gap:14px;padding:10px 16px;background:var(--panel);border-bottom:1px solid var(--line)}
+.brand{font-weight:600}
+.toolbar{display:flex;align-items:center;gap:8px;padding:10px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.toolbar .sep,.toolbar .spacer{display:inline-block}
+.toolbar .sep{width:1px;height:22px;background:var(--line);margin:0 4px}
+.toolbar .spacer{flex:1}
+
+.btn{cursor:pointer;border:1px solid var(--line);background:#222838;color:var(--text);
+  padding:6px 12px;border-radius:7px;font-size:13px;line-height:1}
+.btn:hover{background:var(--hover)}
+.btn.ghost{background:transparent}
+.btn.danger{color:var(--danger);border-color:#42262a}
+input[type=text],input[type=password]{background:#0c0e14;border:1px solid var(--line);color:var(--text);
+  padding:7px 10px;border-radius:7px;outline:none}
+input[type=text]:focus,input[type=password]:focus{border-color:var(--accent)}
+
+.breadcrumb{padding:8px 16px;border-bottom:1px solid var(--line);color:var(--muted);overflow-x:auto;white-space:nowrap}
+.breadcrumb a{cursor:pointer}
+.breadcrumb .crumb:after{content:'›';margin:0 6px;color:var(--line)}
+.breadcrumb .crumb:last-child:after{content:''}
+
+main{padding:0 8px}
+.filelist{width:100%;border-collapse:collapse}
+.filelist th{ text-align:left;font-weight:500;color:var(--muted);font-size:12px;
+  padding:8px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg)}
+.filelist td{padding:7px 8px;border-bottom:1px solid #1b1f2b;vertical-align:middle}
+.filelist tr:hover td{background:var(--hover)}
+.c-size{width:90px;text-align:right;color:var(--muted)}
+.c-mod{width:160px;color:var(--muted)}
+.c-act{width:150px;text-align:right}
+.name-cell{display:flex;align-items:center;gap:8px;cursor:default}
+.name-cell .icon{width:18px;text-align:center}
+.name-cell.clickable{cursor:pointer}
+.name-cell.clickable:hover{color:var(--accent)}
+.row-act{visibility:hidden;display:inline-flex;gap:4px}
+tr:hover .row-act{visibility:visible}
+.iconbtn{cursor:pointer;border:none;background:transparent;color:var(--muted);font-size:14px;padding:3px 5px;border-radius:5px}
+.iconbtn:hover{background:#2a3142;color:var(--text)}
+.iconbtn.del:hover{color:var(--danger)}
+.status{padding:12px 8px}
+
+/* login */
+.login-body{display:flex;min-height:100vh;align-items:center;justify-content:center}
+.login-card{background:var(--panel);border:1px solid var(--line);padding:28px;border-radius:12px;width:320px;display:flex;flex-direction:column;gap:12px}
+.login-card h1{font-size:18px;margin:0}
+.login-card input,.login-card button{width:100%}
+.login-card button{padding:9px;background:var(--accent);border:none;border-radius:7px;color:#fff;cursor:pointer;font-size:14px}
+.error{background:#3a2125;color:#ffb4b4;padding:8px 10px;border-radius:7px;font-size:13px}
+
+/* modal */
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:50}
+.modal-card{background:var(--panel);border:1px solid var(--line);border-radius:12px;width:480px;max-width:92vw}
+.modal-card.wide{width:820px;height:80vh;display:flex;flex-direction:column}
+.modal-head{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line);font-weight:600}
+.modal-foot{display:flex;align-items:center;gap:10px;padding:12px 16px;border-top:1px solid var(--line)}
+.x{background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer;line-height:1}
+#editorText{flex:1;width:100%;border:none;background:#0c0e14;color:var(--text);padding:14px;
+  font:13px/1.5 Consolas,Menlo,monospace;resize:none;outline:none}

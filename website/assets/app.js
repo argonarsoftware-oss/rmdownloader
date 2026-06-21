@@ -1,0 +1,203 @@
+// Front-end for the remote file manager. Talks only to api.php (same origin).
+'use strict';
+
+var state = { path: '', parent: null, entries: [] };
+
+function api(action, params) {
+  var url = 'api.php?action=' + encodeURIComponent(action);
+  if (params) for (var k in params) url += '&' + encodeURIComponent(k) + '=' + encodeURIComponent(params[k]);
+  return url;
+}
+
+function getJSON(action, params) {
+  return fetch(api(action, params), { credentials: 'same-origin' }).then(function (r) {
+    if (r.status === 401) { location.href = 'login.php'; throw new Error('auth'); }
+    return r.json();
+  });
+}
+
+function postJSON(action, params, body) {
+  return fetch(api(action, params), { method: 'POST', credentials: 'same-origin', body: body })
+    .then(function (r) { return r.json(); });
+}
+
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, function (c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+  });
+}
+
+function humanSize(n) {
+  if (n < 0) return '';
+  var u = ['B', 'KB', 'MB', 'GB', 'TB'], i = 0;
+  while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
+  return (i === 0 ? n : n.toFixed(1)) + ' ' + u[i];
+}
+
+function setStatus(msg) { document.getElementById('status').textContent = msg || ''; }
+
+function load(path) {
+  setStatus('Loading…');
+  getJSON('list', { path: path || '' }).then(function (d) {
+    if (!d.ok) { setStatus(d.error || 'Error'); return; }
+    state.path = d.path; state.parent = d.parent; state.entries = d.entries || [];
+    render();
+    setStatus(state.entries.length + ' item(s)');
+  }).catch(function (e) { if (e.message !== 'auth') setStatus('Cannot reach agent.'); });
+}
+
+function renderBreadcrumb() {
+  var bc = document.getElementById('breadcrumb');
+  bc.innerHTML = '';
+  var drives = document.createElement('a');
+  drives.className = 'crumb'; drives.textContent = 'Drives';
+  drives.onclick = function () { load(''); };
+  bc.appendChild(drives);
+  if (!state.path) return;
+  // Split a Windows path like C:\a\b into clickable crumbs.
+  var parts = state.path.replace(/\\+$/, '').split('\\');
+  var acc = '';
+  for (var i = 0; i < parts.length; i++) {
+    if (parts[i] === '') continue;
+    acc += parts[i] + '\\';
+    (function (full, label) {
+      var a = document.createElement('a');
+      a.className = 'crumb'; a.textContent = label;
+      a.onclick = function () { load(full); };
+      bc.appendChild(a);
+    })(acc, parts[i]);
+  }
+}
+
+function render() {
+  renderBreadcrumb();
+  var rows = document.getElementById('rows');
+  var filter = document.getElementById('filter').value.toLowerCase();
+  rows.innerHTML = '';
+  state.entries.forEach(function (e) {
+    if (filter && e.name.toLowerCase().indexOf(filter) === -1) return;
+    var isDir = e.type === 'dir' || e.type === 'drive';
+    var tr = document.createElement('tr');
+
+    var icon = e.type === 'drive' ? '💾' : (isDir ? '📁' : '📄');
+    var nameCell = '<div class="name-cell ' + (isDir ? 'clickable' : '') + '">' +
+      '<span class="icon">' + icon + '</span><span>' + esc(e.name) + '</span></div>';
+
+    var acts = '';
+    if (!isDir) acts += '<button class="iconbtn" data-act="download" title="Download">⬇</button>';
+    if (!isDir) acts += '<button class="iconbtn" data-act="view" title="View / edit">✎</button>';
+    if (e.type !== 'drive') acts += '<button class="iconbtn" data-act="rename" title="Rename">✏</button>';
+    if (e.type !== 'drive') acts += '<button class="iconbtn del" data-act="delete" title="Delete">🗑</button>';
+
+    tr.innerHTML =
+      '<td>' + nameCell + '</td>' +
+      '<td class="c-size">' + (isDir ? '' : humanSize(e.size)) + '</td>' +
+      '<td class="c-mod">' + esc(e.modified || '') + '</td>' +
+      '<td class="c-act"><span class="row-act">' + acts + '</span></td>';
+
+    var nc = tr.querySelector('.name-cell');
+    if (isDir) nc.onclick = function () { load(e.path); };
+
+    tr.querySelectorAll('[data-act]').forEach(function (b) {
+      b.onclick = function (ev) { ev.stopPropagation(); doAction(b.getAttribute('data-act'), e); };
+    });
+    rows.appendChild(tr);
+  });
+}
+
+function doAction(act, e) {
+  if (act === 'download') {
+    window.location = api('download', { path: e.path });
+  } else if (act === 'view') {
+    openEditor(e);
+  } else if (act === 'rename') {
+    var nn = prompt('Rename to:', e.name);
+    if (!nn || nn === e.name) return;
+    postJSON('rename', { path: e.path }, formData({ newName: nn })).then(function (d) {
+      if (!d.ok) alert(d.error); load(state.path);
+    });
+  } else if (act === 'delete') {
+    if (!confirm('Delete "' + e.name + '"' + (e.type === 'dir' ? ' and all its contents' : '') + '?')) return;
+    postJSON('delete', { path: e.path }).then(function (d) {
+      if (!d.ok) alert(d.error); load(state.path);
+    });
+  }
+}
+
+function formData(obj) {
+  var f = new FormData();
+  for (var k in obj) f.append(k, obj[k]);
+  return f;
+}
+
+// ---- editor ----
+var editorPath = null;
+function openEditor(e) {
+  setStatus('Opening ' + e.name + '…');
+  getJSON('read', { path: e.path }).then(function (d) {
+    if (!d.ok) { alert(d.error); setStatus(''); return; }
+    editorPath = e.path;
+    document.getElementById('editorTitle').textContent = e.name;
+    document.getElementById('editorText').value = d.content;
+    document.getElementById('editorMsg').textContent = '';
+    document.getElementById('editor').hidden = false;
+    setStatus('');
+  });
+}
+function closeEditor() { document.getElementById('editor').hidden = true; editorPath = null; }
+
+// ---- toolbar wiring ----
+document.getElementById('btnUp').onclick = function () { if (state.parent) load(state.parent); else load(''); };
+document.getElementById('btnDrives').onclick = function () { load(''); };
+document.getElementById('btnRefresh').onclick = function () { load(state.path); };
+document.getElementById('filter').oninput = render;
+
+document.getElementById('btnNewFolder').onclick = function () {
+  if (!state.path) { alert('Open a drive first.'); return; }
+  var name = prompt('New folder name:');
+  if (!name) return;
+  postJSON('mkdir', { path: state.path }, formData({ name: name })).then(function (d) {
+    if (!d.ok) alert(d.error); load(state.path);
+  });
+};
+
+document.getElementById('fileInput').onchange = function () {
+  if (!state.path) { alert('Open a drive/folder first.'); this.value = ''; return; }
+  var files = Array.prototype.slice.call(this.files);
+  var input = this;
+  var i = 0;
+  function next() {
+    if (i >= files.length) { input.value = ''; load(state.path); return; }
+    var f = files[i++];
+    setStatus('Uploading ' + f.name + ' (' + i + '/' + files.length + ')…');
+    postJSON('upload', { path: state.path }, formData({ file: f })).then(function (d) {
+      if (!d.ok) alert('Upload failed: ' + (d.error || f.name));
+      next();
+    });
+  }
+  next();
+};
+
+document.getElementById('btnSave').onclick = function () {
+  if (!editorPath) return;
+  var content = document.getElementById('editorText').value;
+  document.getElementById('editorMsg').textContent = 'Saving…';
+  postJSON('save', { path: editorPath }, formData({ content: content })).then(function (d) {
+    document.getElementById('editorMsg').textContent = d.ok ? 'Saved.' : ('Error: ' + d.error);
+    if (d.ok) load(state.path);
+  });
+};
+
+document.querySelectorAll('[data-close]').forEach(function (b) { b.onclick = closeEditor; });
+document.getElementById('editor').addEventListener('click', function (ev) {
+  if (ev.target === this) closeEditor();
+});
+
+// ---- boot ----
+getJSON('info').then(function (d) {
+  if (d.ok) {
+    document.getElementById('hostinfo').textContent =
+      d.host + ' · ' + d.user + (d.sandbox ? ' · sandbox: ' + d.sandbox : '');
+  }
+});
+load('');

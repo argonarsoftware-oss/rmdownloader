@@ -1,0 +1,15 @@
+# Secrets / per-machine config (created from the .sample files on each host)
+website/config.php
+agent/agent.conf
+
+# Build output
+agent/Agent.exe
+agent/*.pdb
+
+# Local test scratch
+_agenttest/
+
+# OS / editor noise
+Thumbs.db
+.DS_Store
+*.log

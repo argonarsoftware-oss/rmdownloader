@@ -1,0 +1,12 @@
+# rmdownloader agent configuration (key=value, one per line)
+# Change the token to a long random secret. It must match website/config.php.
+token=CHANGE-THIS-TO-A-LONG-RANDOM-SECRET
+
+# Interface to bind. 127.0.0.1 = same machine as XAMPP (recommended).
+# Use 0.0.0.0 to allow remote XAMPP servers (then run the exe as admin or add a urlacl).
+host=127.0.0.1
+port=8765
+
+# Optional sandbox: restrict all access to this folder (and below). Empty = whole machine.
+# root=C:\shared
+root=
