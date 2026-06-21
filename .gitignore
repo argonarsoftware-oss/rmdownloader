@@ -5,6 +5,8 @@ agent/agent.conf
 # Build output
 agent/Agent.exe
 agent/*.pdb
+agent/Embedded.cs
+agent/agent.id
 
 # Runtime command queue (keep the folder + .htaccess, ignore live cmd/res files)
 website/data/*/

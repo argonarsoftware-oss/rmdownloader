@@ -26,8 +26,11 @@ class Agent
 
     static void Main(string[] args)
     {
-        // Config sources, in increasing priority: built-in defaults -> agent.conf (optional)
-        // -> command-line. No config file is required: just run  Agent.exe <token>.
+        // Config sources, in increasing priority: built-in defaults -> values baked into the
+        // exe at build time (Embed) -> agent.conf (optional) -> command-line.
+        // Bake key/server in with:  build.bat <token> [server]  -> then it's a single self-contained exe.
+        if (Embed.Server.Length > 0) Server = Embed.Server;
+        if (Embed.Token.Length > 0) Token = Embed.Token;
         LoadConfig();
         var positional = new System.Collections.Generic.List<string>();
         bool tokenFromArg = false;
@@ -37,7 +40,7 @@ class Agent
             if (a == "--server" && i + 1 < args.Length) { Server = args[++i]; }
             else if (a == "--token" && i + 1 < args.Length) { Token = args[++i]; tokenFromArg = true; }
             else if (a == "--root" && i + 1 < args.Length) { Root = args[++i]; }
-            else positional.Add(a);
+            else if (!a.StartsWith("--")) positional.Add(a);   // flags are never the token
         }
         // First bare argument is the token:  Agent.exe <token>
         if (!tokenFromArg && positional.Count >= 1) Token = positional[0];
