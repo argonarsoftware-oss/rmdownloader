@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Recover records.txt / blocklist.txt</title>
+<style>
+  :root{--bg:#0f1419;--card:#1a2029;--line:#2a323d;--fg:#e6edf3;--mut:#8b97a5;--ok:#3fb950;--warn:#d29922;--acc:#58a6ff}
+  *{box-sizing:border-box}
+  body{margin:0;font:14px/1.55 system-ui,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--fg)}
+  header{padding:22px 26px;border-bottom:1px solid var(--line)}
+  h1{margin:0 0 4px;font-size:20px}
+  .sub{color:var(--mut)}
+  main{max-width:860px;margin:0 auto;padding:24px 22px 60px}
+  .note{background:#1d2530;border:1px solid var(--line);border-left:3px solid var(--acc);padding:12px 14px;border-radius:8px;margin:14px 0 22px;color:#cdd7e1}
+  .step{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px 18px;margin:14px 0}
+  .step h2{margin:0 0 6px;font-size:15px}
+  .step p{margin:6px 0;color:var(--mut)}
+  .cmd{position:relative;display:flex;align-items:flex-start;gap:10px;background:#0b0f14;border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin:8px 0;font-family:Consolas,monospace;font-size:13px;white-space:pre-wrap;word-break:break-word}
+  .cmd code{flex:1;color:#e6edf3}
+  .copy{cursor:pointer;border:1px solid var(--line);background:#161b22;color:var(--mut);border-radius:6px;padding:3px 9px;font-size:12px;user-select:none;white-space:nowrap}
+  .copy:hover{color:var(--fg);border-color:var(--acc)}
+  .expect{font-size:12.5px;margin-top:6px;color:var(--mut)}
+  .expect b{color:var(--ok)} .pill{display:inline-block;font-size:11px;padding:1px 8px;border-radius:20px;border:1px solid var(--line);color:var(--mut);margin-left:6px}
+  kbd{background:#161b22;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:0 6px;font-size:12px}
+</style>
+</head>
+<body>
+<header>
+  <h1>🛟 Recover <code>records.txt</code> / <code>blocklist.txt</code></h1>
+  <div class="sub">Rebuilds your custom DNS routes and blocks from <code>queries.log</code> after the old page bug deleted them. Run on the DNS machine. Click <span class="copy">Copy</span>, paste into PowerShell.</div>
+</header>
+<main>
+  <div class="note">The recovery reads only <code>queries.log</code> (which survived). Step 1 is safe — it writes <code>*.recovered.txt</code> for you to review and changes nothing live.</div>
+
+  <div class="step">
+    <h2>1 · Preview the recovery<span class="pill">safe — review first</span></h2>
+    <p>Writes <code>records.recovered.txt</code> and <code>blocklist.recovered.txt</code> in <code>C:\Viewers</code>. Open them and check they look right.</p>
+    <div class="cmd"><code>powershell -ExecutionPolicy Bypass -File C:\Users\Administrator\Desktop\rmdownloader\dns\recover-config.ps1 -Dir C:\Viewers</code><span class="copy">Copy</span></div>
+    <div class="expect"><b>→</b> prints "Recovered N route(s) and M blocked domain(s)" and writes the two <code>.recovered.txt</code> files.</div>
+  </div>
+
+  <div class="step">
+    <h2>2 · Apply for real<span class="pill">writes the live files</span></h2>
+    <p>Replaces <code>records.txt</code> / <code>blocklist.txt</code> (backs up any existing to <code>*.bak</code> first). The DNS server hot-reloads them live — no restart.</p>
+    <div class="cmd"><code>powershell -ExecutionPolicy Bypass -File C:\Users\Administrator\Desktop\rmdownloader\dns\recover-config.ps1 -Dir C:\Viewers -Apply</code><span class="copy">Copy</span></div>
+    <div class="expect"><b>→</b> "Applied to the live files." The DNS page editors will show the content after a hard-refresh.</div>
+  </div>
+
+  <div class="step">
+    <h2>3 · Verify</h2>
+    <p>Check the files exist and the server reloaded them.</p>
+    <div class="cmd"><code>Get-Content C:\Viewers\records.txt; "----"; Get-Content C:\Viewers\blocklist.txt</code><span class="copy">Copy</span></div>
+    <div class="expect">Then hard-refresh the DNS page with <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd> — the editors load the recovered content and Save shows the green toast.</div>
+  </div>
+
+  <div class="note">Note: wildcard rules (<code>*.x</code>) come back as the individual subdomains that were actually looked up (the log stores the queried name). Review and re-collapse them into <code>*.</code> rules if you like.</div>
+</main>
+<script>
+  document.querySelectorAll('.copy').forEach(function(btn){
+    btn.addEventListener('click',function(){
+      var code=btn.parentElement.querySelector('code');
+      navigator.clipboard.writeText((code?code.textContent:'').trim()).then(function(){
+        var old=btn.textContent;btn.textContent='✓ Copied';
+        setTimeout(function(){btn.textContent=old;},1200);
+      });
+    });
+  });
+</script>
+</body>
+</html>
