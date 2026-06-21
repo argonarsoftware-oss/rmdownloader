@@ -31,7 +31,7 @@ class Agent
     //   * new web app + old agent  -> web checks caps / handles {unknown_op:true}, degrades.
     //   * new agent + old web app  -> extra result fields (label/version/caps) are ignored.
     //   * known ops never change meaning; new args are optional; new result fields are optional.
-    const string AGENT_VERSION = "1.1.0";
+    const string AGENT_VERSION = "2026.06.21";   // date-based (YYYY.MM.DD); bump on each build with new behavior
     static readonly string[] CAPS = new string[] {
         "info", "list", "read", "download", "write", "mkdir", "delete", "rename", "exec",
         "drive-label", "version"
