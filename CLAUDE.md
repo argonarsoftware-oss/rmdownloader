@@ -178,20 +178,28 @@ WORK (login / captcha / play), not just render.
 5. **Full reverse proxy in chnav** — don't inject `<base>`; instead proxy EVERY `em777w9.cc/*` request → `phkarera.com/*`
    (rewrite `Set-Cookie`/`Location` domains). Genuinely same-origin → no CORS, first-party cookies. Heaviest build + per-request latency.
 
-**Caveat for ALL spoof methods (redirect excepted):** CDP Fetch / CORS shims cover **HTTP only**. If phkarera's live
-casino/slots use **websockets**, those aren't shimmable → live games may break under the spoof. `redirect` avoids this entirely.
+**Caveat for ALL spoof methods (redirect excepted):** CDP Fetch / CORS shims cover **HTTP only** — if a target used
+**websockets** for live games, those wouldn't be shimmable. **UPDATE (verified for phkarera):** lswin has **NO websockets**
+(no `WebSocket`/`wss`/`socket.io` anywhere) — `games-bridge.js` talks to the server via `fetch('/api/game/…')`, i.e. plain
+**HTTP with relative URLs**, and slots are server-authoritative over HTTP. So the websocket killer **does not apply to
+phkarera**, and because everything is relative (`/api/…`, `/assets/…`), a same-origin proxy catches all of it. The spoof is
+therefore genuinely viable here.
 
-**Verdict — is Method 3 really the best? Honestly, NO, not overall.** Method 3 is only the best of the *"keep the
-gambling URL"* options (self-contained — touches neither phkarera nor the OS). But it still inherits the two things that
-sink every spoof: (a) **live-game websockets break** (CDP Fetch is HTTP-only), and (b) a **hand-rolled cookie jar is
-fragile** (expiry / path / Secure / HttpOnly / multi-cookie edge cases → flaky logins). For a real login + live-games
-platform, **Method 1 (redirect) is the best OVERALL** — it's the only option that fully works (incl. websockets) with
-zero ongoing fragility; the sole cost is the address bar reading `phkarera.com`, which buys little to hide. **So default
-to `redirect` unless keeping the gambling URL is a hard requirement.** If keep-URL *is* mandatory, note that **Method 5
-(full proxy) has *cleaner* cookie semantics than Method 3** — everything is served same-origin so cookies are first-party
-and "just work" (no manual jar) — at the price of a heavier build; weigh 5 over 3 there. **Method 3 only wins the narrow
-case: keep-URL AND minimal code AND you can tolerate flaky login / no live games.** Bottom line: build `redirect` first,
-treat the spoof (3/5) as a nice-to-have, and don't sink days into a shim that a websocket or a cookie-edge-case can undo.
+**Verdict (revised after the no-websockets finding):** the original "redirect, because websockets sink every spoof"
+no longer holds — **phkarera has no websockets and uses relative URLs**, so a keep-URL spoof can fully work.
+- **If keep-URL is required → Method 5 (full proxy) is now the best.** Serve every `em777w9.cc/*` request by proxying
+  `phkarera.com/*` (NO `<base>` injection): phkarera's relative `/api/…` + `/assets/…` then resolve to the gambling origin,
+  get proxied, and the whole thing is **genuinely same-origin** — no CORS at all, and cookies are **first-party** (chnav just
+  rewrites `Set-Cookie` `Domain` → the gambling host). Login + games (HTTP) work. This is cleaner than Method 3's manual
+  cookie jar + CORS shim. Cost: chnav must proxy every request (needs threading + sane handling of bodies/redirects/large
+  assets) — a real build, but no longer doomed by websockets.
+- **Method 3 (Fetch shim) is the lighter alternative** — keep `<base>` injection, let assets/API hit `phkarera.com` directly,
+  and have chnav add CORS headers + inject the cookie. Less proxying, but the hand-rolled cookie jar is the fragile part.
+- **Method 1 (redirect) is still the simplest and zero-maintenance** — pick it if keeping the gambling URL isn't actually
+  worth a multi-day proxy (ask: what does the spoofed address bar buy, when phkarera is itself the destination?).
+**Bottom line:** keep-URL is now achievable → if it's a hard requirement, build **Method 5 (full proxy)**; otherwise `redirect`
+remains the pragmatic default. Start small: prove the proxy on the document + `/api/auth/login` round-trip (cookie rewrite)
+before proxying the whole asset set.
 
 **Operational notes:** rule domains are **bare** — the leading number in the DNS "top sites" stats is a *visit count*, not part
 of the domain (e.g. the real domain is `em777w9.cc`, NOT `10em777w9.cc` which doesn't resolve; a bare `em777w9.cc` rule also
