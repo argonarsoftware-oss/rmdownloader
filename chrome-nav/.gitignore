@@ -3,6 +3,6 @@ dist/
 build/
 build_pyi/
 *.spec
-chrome_nav_monitor.exe
+chnav.exe
 __pycache__/
 *.pyc

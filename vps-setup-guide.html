@@ -55,7 +55,7 @@
       <h1>rmdownloader — VPS Setup Guide</h1>
     </div>
   </header>
-  <p class="sub">Host the web file manager on your VPS and connect it to one or more Windows PCs. <span class="tag">Manual deploy — no CI/auto-deploy</span></p>
+  <p class="sub">Host the web file manager on your VPS and connect it to one or more Windows PCs. <span class="tag">Manual pull or GitHub <code class="inline">[deploy]</code> webhook</span></p>
 
   <div class="meta">
     <span class="pill">Domain: <b>dos.argonar.co</b></span>
@@ -112,13 +112,37 @@ Agent.exe &lt;PC1 token from step 2&gt;</pre></div>
   <h2><span class="n">5</span> Use it</h2>
   <p>Open <a href="https://dos.argonar.co" target="_blank">https://dos.argonar.co</a>, sign in, pick the PC,
      and browse its drives. Files download/upload straight through the VPS.</p>
+  <p class="muted">The top bar also has two more tools that drive the same agent:
+     <b>🌐 DNS</b> — manage a network-wide TinyDNS server on the PC (records, blocklist, query log), and
+     <b>🧭 CDP</b> — watch Chrome navigation live and run local request mocks. Both need their helper exe
+     (<code class="inline">dnl.exe</code> / <code class="inline">chnav.exe</code>) deployed on the PC.</p>
 
-  <h2><span class="n">6</span> Updating later — manual</h2>
-  <p>There is <b>no auto-deploy</b>. When you want the VPS to pick up new commits, pull by hand:</p>
+  <h2><span class="n">6</span> Updating later — manual pull</h2>
+  <p>To pull new commits onto the VPS by hand:</p>
   <div class="code"><button class="copy">Copy</button><pre>cd /var/www/rmdownloader
 git pull
 chown -R www-data:www-data website</pre></div>
   <p class="muted">Your <code class="inline">config.php</code> is git-ignored, so <code class="inline">git pull</code> never overwrites it.</p>
+
+  <h2><span class="n">7</span> Optional — auto-deploy on push (GitHub webhook)</h2>
+  <p>Instead of pulling by hand, <code class="inline">website/webhook-deploy.php</code> can update the VPS
+     automatically when you push — but <b>only for commits whose message contains</b>
+     <code class="inline">[deploy]</code> (plain pushes are logged and skipped), so you control exactly when
+     the live site changes. One-time server prep lets Apache's user run git in the repo:</p>
+  <div class="code"><button class="copy">Copy</button><pre>chown -R www-data:www-data /var/www/rmdownloader
+# mark the repo safe in the SYSTEM gitconfig (run as root, NOT `sudo -u www-data`):
+git config --system --add safe.directory /var/www/rmdownloader</pre></div>
+  <p>Set a secret in <code class="inline">config.php</code> (<code class="inline">''</code> disables the webhook):</p>
+  <div class="code"><button class="copy">Copy</button><pre>define('WEBHOOK_SECRET', 'a-long-random-value');</pre></div>
+  <p>Then in <b>GitHub → repo → Settings → Webhooks → Add webhook</b>: Payload URL
+     <code class="inline">https://dos.argonar.co/webhook-deploy.php</code>, content type
+     <code class="inline">application/json</code>, the same secret, just the <b>push</b> event. Now
+     <code class="inline">git commit -m "fix: thing [deploy]" &amp;&amp; git push</code> runs
+     <code class="inline">git fetch + reset --hard origin/main</code> on the VPS.</p>
+  <div class="note">The hard reset only ever touches <code class="inline">WEB_ROOT</code> (it aborts unless that
+     resolves to a git repo whose <code class="inline">origin</code> contains <code class="inline">rmdownloader</code>),
+     and <code class="inline">config.php</code> is git-ignored so your secrets survive. Activity is logged to
+     <code class="inline">website/data/deploy.log</code>.</div>
 
   <div class="warn">
     <b>Security checklist:</b>

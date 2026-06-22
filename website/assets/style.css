@@ -100,6 +100,28 @@ tr:hover .row-act{visibility:visible}
 .d-local{color:var(--green)}
 .d-fwd{color:var(--muted)}
 
+/* CDP navigation feed types */
+.d-nav{color:var(--green);font-weight:600}
+.d-spa{color:#58a6ff}
+.d-doc{color:#caa24a}
+.d-req{color:var(--muted)}
+.d-info{color:#8b95a7;font-style:italic}
+.d-warn{color:#caa24a;font-weight:600}
+.d-replace{color:#58a6ff;font-weight:600}
+.tab-chip{display:inline-flex;align-items:center;gap:6px;max-width:340px;background:#0c0e14;border:1px solid var(--line);
+  border-radius:6px;padding:4px 9px;font-size:12px;margin:3px 4px 0 0}
+.tab-chip b{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:300px}
+
+/* CDP site-rules editor */
+.rules-table{width:100%;border-collapse:collapse;margin-top:6px}
+.rules-table th{text-align:left;color:var(--muted);font-weight:500;font-size:12.5px;padding:4px 8px;border-bottom:1px solid var(--line)}
+.rules-table td{padding:4px 8px;vertical-align:middle}
+.rules-table .r-dom{width:34%}.rules-table .r-actcol{width:130px}.rules-table .r-x{width:34px}
+.rules-table input[type=text]{width:100%;box-sizing:border-box}
+.rules-table input:disabled{opacity:.4}
+.rules-table select.r-action{width:100%}
+.rules-table .r-del{padding:2px 9px;line-height:1.4}
+
 /* terminal */
 .term-out{flex:1;margin:0;padding:14px;overflow:auto;background:#0c0e14;color:#cfe3d0;
   font:12.5px/1.5 Consolas,Menlo,monospace;white-space:pre-wrap;word-break:break-word}

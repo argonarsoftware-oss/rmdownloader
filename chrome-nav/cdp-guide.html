@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>rmdownloader — CDP / Chrome Navigation &amp; Regulation Guide</title>
+<style>
+  :root{--bg:#0f1117;--panel:#171a23;--line:#262b38;--text:#e6e8ee;--muted:#8b93a7;
+        --accent:#4f8cff;--green:#3ecf8e;--code:#0c0e14;--warn:#3a2125;--warntx:#ffb4b4}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+       font:15px/1.6 -apple-system,Segoe UI,Roboto,Arial,sans-serif}
+  .wrap{max-width:880px;margin:0 auto;padding:32px 20px 80px}
+  header{display:flex;align-items:center;gap:14px;margin-bottom:6px}
+  header .logo{font-size:30px}
+  h1{font-size:26px;margin:0}
+  .sub{color:var(--muted);margin:0 0 26px;font-size:14px}
+  .meta{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 30px}
+  .pill{background:var(--panel);border:1px solid var(--line);border-radius:20px;
+        padding:5px 13px;font-size:13px;color:var(--muted)}
+  .pill b{color:var(--text)}
+  h2{font-size:19px;margin:34px 0 6px;padding-top:18px;border-top:1px solid var(--line);
+     display:flex;align-items:center;gap:10px}
+  h2 .n{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;
+        background:var(--accent);color:#fff;border-radius:50%;font-size:13px;font-weight:700;flex:none}
+  p{margin:8px 0}
+  .muted{color:var(--muted)}
+  a{color:var(--accent);text-decoration:none}
+  a:hover{text-decoration:underline}
+  ul{margin:8px 0;padding-left:22px}
+  li{margin:4px 0}
+  code.inline{background:var(--code);border:1px solid var(--line);border-radius:5px;
+              padding:1px 6px;font-family:Consolas,Menlo,monospace;font-size:13px}
+  .code{position:relative;background:var(--code);border:1px solid var(--line);border-radius:9px;
+        margin:12px 0;overflow:hidden}
+  .code pre{margin:0;padding:14px 16px;overflow-x:auto;
+            font:13px/1.55 Consolas,Menlo,monospace;color:#dfe6f1}
+  .code .copy{position:absolute;top:8px;right:8px;background:#222838;border:1px solid var(--line);
+              color:var(--muted);border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer}
+  .code .copy:hover{background:#2a3142;color:var(--text)}
+  .code .copy.done{color:var(--green);border-color:#264a3a}
+  .note,.warn{border-radius:9px;padding:12px 15px;margin:14px 0;font-size:14px}
+  .note{background:#15233a;border:1px solid #243b5e}
+  .warn{background:var(--warn);border:1px solid #5e2a30;color:var(--warntx)}
+  .tag{font-size:12px;color:var(--green);border:1px solid #264a3a;border-radius:5px;padding:1px 7px}
+  table{width:100%;border-collapse:collapse;margin:12px 0;font-size:14px}
+  th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:500}
+  footer{margin-top:40px;color:var(--muted);font-size:13px;border-top:1px solid var(--line);padding-top:16px}
+  kbd{background:#222838;border:1px solid var(--line);border-radius:4px;padding:0 5px;font-size:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <span class="logo">🧭</span>
+    <div>
+      <h1>rmdownloader — CDP / Chrome Navigation &amp; Regulation</h1>
+    </div>
+  </header>
+  <p class="sub">Watch a PC's Chrome navigation live in the dashboard, and enforce per-site rules — block, warn, or replace — across every tab. <span class="tag">For PCs you administer</span></p>
+
+  <div class="meta">
+    <span class="pill">Page: <b>cdp.php</b> (🧭 CDP)</span>
+    <span class="pill">Tool: <b>chnav.exe</b></span>
+    <span class="pill">Rules file: <b>blt.txt</b></span>
+    <span class="pill">Protocol: <b>Chrome DevTools Protocol</b></span>
+  </div>
+
+  <div class="note">
+    <b>How it fits together:</b> the <b>🧭 CDP</b> page has <b>no backend of its own</b> — exactly like the DNS
+    Manager. <code class="inline">cdp.js</code> sends PowerShell to the PC through the agent's
+    <code class="inline">exec</code> op to launch <code class="inline">chnav.exe</code> and tail its log output back
+    into the browser. <code class="inline">chnav.exe</code> attaches to Chrome over the <b>Chrome DevTools
+    Protocol</b> (browser-level, so it covers every tab), prints navigation, and enforces the rules in
+    <code class="inline">blt.txt</code>.
+  </div>
+
+  <h2><span class="n">1</span> Build the exe</h2>
+  <p>On a machine with <b>Python 3 + PyInstaller</b> (only needed to build; the exe then runs with no Python).
+     Deps: <code class="inline">pip install pyinstaller requests websocket-client</code>.</p>
+  <div class="code"><button class="copy">Copy</button><pre>cd chrome-nav
+build.bat            :: -> dist\chnav.exe  (~10 MB, runs with no Python)</pre></div>
+  <p class="muted"><code class="inline">chnav.exe</code> is a git-ignored build artifact — build it locally, don't commit.</p>
+
+  <h2><span class="n">2</span> Deploy it to the PC</h2>
+  <p>Copy <code class="inline">chnav.exe</code> into one folder on each target PC — ideally <b>next to the agent's
+     own exe</b>, which the page auto-detects. The rules file <code class="inline">blt.txt</code> is created in the
+     same folder when you Save rules from the page.</p>
+  <div class="code"><button class="copy">Copy</button><pre>:: example layout on the PC
+C:\Users\Administrator\Desktop\chrome-nav\chnav.exe</pre></div>
+
+  <h2><span class="n">3</span> Point the site at it (optional)</h2>
+  <p>The folder auto-detects (running <code class="inline">chnav</code> → next to the agent → config fallback), so
+     this is usually optional. To set the default folder and debug port, in
+     <code class="inline">website/config.php</code>:</p>
+  <div class="code"><button class="copy">Copy</button><pre>define('CDP_DIR', 'C:\\Users\\Administrator\\Desktop\\chrome-nav');
+define('CDP_PORT', 9222);</pre></div>
+
+  <h2><span class="n">4</span> Start it &amp; watch navigation</h2>
+  <p>Open the app, click <b>🧭 CDP</b> in the top bar, pick the PC, then <b>▶ Start</b>.</p>
+  <table>
+    <tr><th>Control</th><th>What it does</th></tr>
+    <tr><td><b>▶ Start</b></td><td>Launches <code class="inline">chnav.exe</code>. It <b>verifies the debug port first</b>: if Chrome is already debugging it attaches; otherwise it kills the running Chrome and relaunches it with debugging (you can't add the port to a live Chrome).</td></tr>
+    <tr><td><b>■ Stop / ⟳ Restart</b></td><td>Stops / restarts the monitor.</td></tr>
+    <tr><td><b>requests</b></td><td>Also log every request URL (<code class="inline">DOC</code>/<code class="inline">req</code>).</td></tr>
+    <tr><td><b>📡 Feed</b></td><td>Live tail: <code class="inline">NAV</code>/<code class="inline">SPA</code> navigations and <code class="inline">BLOCK</code>/<code class="inline">WARN</code>/<code class="inline">REPLACE</code> rule hits, newest first. Filter + auto-refresh.</td></tr>
+  </table>
+
+  <h2><span class="n">5</span> Site rules — block, warn, replace</h2>
+  <p>The <b>🛡 Site rules</b> table is one row per domain. Saving writes <code class="inline">blt.txt</code> next to
+     the exe; the monitor <b>hot-reloads it (~2s)</b> — no restart. <code class="inline">*.x</code> matches
+     subdomains, and a bare domain also matches its subdomains.</p>
+  <table>
+    <tr><th>Action</th><th>Result</th></tr>
+    <tr><td><b>Block</b></td><td>A 🚫 <b>warning page</b> replaces the site (the real load/redirect is stopped).</td></tr>
+    <tr><td><b>Warn</b></td><td>A ⚠️ page with <b>your custom message</b>.</td></tr>
+    <tr><td><b>Replace with</b></td><td>Serves another site's page <b>under the original address</b> (e.g. <code class="inline">facebook.com → https://www.youtube.com/</code>): the URL bar stays, the content is the other site.</td></tr>
+  </table>
+  <p class="muted">Saved <code class="inline">blt.txt</code> format (you can also edit it by hand):</p>
+  <div class="code"><button class="copy">Copy</button><pre>facebook.com        replace https://www.youtube.com/
+*.tiktok.com        block
+news.example        warn  Back to work please</pre></div>
+  <div class="note">
+    <b>Replace caveat:</b> a static page renders faithfully under the spoofed URL, but a <i>live, script-driven</i>
+    site only half-works — once served under the original origin, the real site's scripts hit CORS/CSP/cookie-origin
+    mismatches. Great for a convincing visual swap; not a working proxy of a live different site.
+  </div>
+
+  <h2><span class="n">6</span> How it works under the hood</h2>
+  <p>Launching Chrome with <code class="inline">--remote-debugging-port</code> exposes the <b>Chrome DevTools
+     Protocol</b>. <code class="inline">chnav.exe</code> attaches at the <b>browser</b> level and auto-attaches to
+     every tab, so rules apply everywhere. Notable details:</p>
+  <ul>
+    <li><b>Block/warn</b> are enforced on <code class="inline">Page.frameNavigated</code> by navigating the tab to a
+      <code class="inline">data:</code> warning page — a real navigation that <i>stops the in-flight load/redirect</i>.</li>
+    <li><b>Replace</b> keeps the URL by re-navigating the tab so the now-active <code class="inline">Fetch</code>
+      domain catches the reload and serves the replacement response.</li>
+    <li>Launches with <code class="inline">--remote-allow-origins=*</code> (Chrome 111+ rejects the DevTools
+      websocket with HTTP 403 otherwise) and <code class="inline">--disk-cache-size=1</code> (so a cached page can't
+      bypass the rules).</li>
+  </ul>
+
+  <div class="warn">
+    <b>Scope &amp; ethics:</b> this seizes control of Chrome on the target PC and runs at the agent's privilege
+    (<b>SYSTEM</b> if the agent auto-started elevated). Use it to regulate <b>machines you own/administer</b>.
+    Serving fake content under a real URL to deceive other people is phishing/spoofing — don't.
+  </div>
+
+  <footer>
+    rmdownloader · CDP / Chrome Navigation &amp; Regulation guide · see also <code>chrome-nav/README.md</code> and <code>CLAUDE.md</code>.
+  </footer>
+
+</div>
+
+<script>
+  document.querySelectorAll('.code .copy').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var code = btn.parentElement.querySelector('pre').innerText;
+      navigator.clipboard.writeText(code).then(function(){
+        btn.textContent = 'Copied'; btn.classList.add('done');
+        setTimeout(function(){ btn.textContent='Copy'; btn.classList.remove('done'); }, 1400);
+      });
+    });
+  });
+</script>
+</body>
+</html>

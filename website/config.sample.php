@@ -57,6 +57,14 @@ define('ALLOW_EXEC', true);
 define('DNS_DIR', 'C:\\Users\\Administrator\\Desktop\\dns\\dist');
 define('DNS_TASK', 'TinyDNS');
 
+// ---- CDP / Chrome navigation monitor (chrome-nav) ----
+// Default folder on the agent PC holding chnav.exe (the navigation monitor +
+// content-regulation tool) and its blt.txt rules file. The page launches the
+// monitor there and tails its nav.log output. Both the folder and the debug
+// port are editable per-PC in the CDP page.
+define('CDP_DIR', 'C:\\Users\\Administrator\\Desktop\\chrome-nav');
+define('CDP_PORT', 9222);
+
 // ---- MySQL (DNS query-log history) ----
 // The DNS page reads query history from here (dns-log.php). Rows are fed in by an
 // "agent bridge": the VPS reads only the NEW bytes of queries.log through the agent's

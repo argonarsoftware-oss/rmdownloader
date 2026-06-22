@@ -28,6 +28,9 @@ or tunnel is needed — you just run the agent.
   - `dns.php` + `assets/dns.js` — the **DNS Manager** page (see DNS subsystem below). Drives the agent
     through the `exec` op via `api.php`; query-log history is read from `dns-log.php` (MySQL) with a live
     file-tail fallback.
+  - `cdp.php` + `assets/cdp.js` — the **CDP / Chrome Navigation** page (see CDP subsystem below). Same
+    no-PHP-backend design as DNS: it manages the `chrome-nav` exes on a PC purely through the agent's
+    `exec` op and tails their log output.
   - `dns-log.php` — reads DNS query history from MySQL (filter/page/clear); returns `db:false` when no DB.
   - `dns-text.php` — automation/Claude-Code view: `?key=<API_KEY>` (or login) returns a plain-text DNS
     report (service status, IPs, top sites, recent queries, blocklist+records); `&format=json` for JSON.
@@ -78,8 +81,9 @@ is not in the agent `build.bat`, and never touches the queue/`data/`. Don't merg
   `--user-data-dir` (`<tmp>/chrome-cdp-monitor`), `--requests`, `--no-launch`, `--force-restart`.
 - **Run:** `cd chrome-nav && py chrome_nav_monitor.py [--requests]`.
 - **Single-file exe (like dnl.exe):** `cd chrome-nav && build.bat` (PyInstaller) →
-  `chrome-nav/dist/chrome_nav_monitor.exe` (runs with no Python installed). The `.py` is committed; the
+  `chrome-nav/dist/chnav.exe` (runs with no Python installed). The `.py` is committed; the
   exe and PyInstaller `dist/`,`build/` output are git-ignored (`chrome-nav/.gitignore`) — build locally.
+  (The monitor also does content regulation now — see the CDP subsystem section below.)
   Full details in `chrome-nav/README.md`.
 - **TODO / continuation (multi-tab auto-follow):** today it attaches to a single page target (the tab
   picked from `/json`), so new tabs/windows aren't tracked. To follow the whole browser: connect to the
@@ -89,6 +93,43 @@ is not in the agent `build.bat`, and never touches the queue/`data/`. Don't merg
   and route incoming events by their `sessionId` (CDP tags every event from an attached target with one).
   Handle `Target.targetDestroyed` to drop closed tabs. Keep the current single-tab path as the default
   and gate the new behavior behind a flag (e.g. `--all-tabs`) so old usage is unchanged.
+
+## CDP subsystem (Chrome Navigation + content regulation) — `chrome-nav/chnav.exe` + `website/cdp.php` + `assets/cdp.js`
+A third feature reusing the same agent: monitor every Chrome tab on a chosen PC AND enforce per-domain
+**site rules** (block / warn / replace), managed from the browser. **Same design point as the DNS Manager —
+no PHP backend of its own:** `cdp.php` is pure HTML that injects `CDP_DIR`/`CDP_PORT` as JS globals; `cdp.js`
+does everything by sending PowerShell through the agent's `exec` op (`api.php?action=exec`).
+- **`chnav.exe`** (built from `chrome_nav_monitor.py`; process name `chnav`). **Start** launches it *detached*
+  via `Start-Process`, stdout → `nav.log` (survives the one-shot `exec` round-trip), passing `--block <dir>\blt.txt`;
+  `--requests` checkbox adds request logging. The page **tails `nav.log`** into a live feed, parsing
+  `[HH:MM:SS] NAV|SPA|DOC|req|BLOCK|WARN|REPLACE <url>` lines (other lines render as dim `info`); auto-refresh 4s.
+- **Startup decision** (`main`): VERIFY the debug port first — if Chrome is already debugging on `--port`, attach
+  (don't disturb it); otherwise kill any plain Chrome and relaunch with `--remote-debugging-port` (you can't add
+  the port to a running Chrome). Launch flags include `--remote-allow-origins=*` (Chrome 111+ 403 gotcha) and
+  `--disk-cache-size=1` (so a cached page still triggers the network request that interception needs).
+- **Regulation is browser-level** (`run_browser`): connects to the *browser* websocket, `Target.setAutoAttach`
+  (flat, `waitForDebuggerOnStart`) so every tab/window is covered. Rules come from **`blt.txt`** (`RuleSet`,
+  hot-reloaded ~2s; read `utf-8-sig` so a BOM can't break the first rule). Format: `<domain> [block|warn <msg>|replace <url>]`,
+  bare domain = block, `*.x` wildcard, a bare domain also matches subdomains.
+- **Enforcement mechanics (load-bearing):** the main-frame *document* request of a freshly-opened tab races Fetch
+  setup and can't be paused reliably (only subresources pause). So:
+  - **block/warn** — enforced on `Page.frameNavigated` via `Page.navigate` to a `data:` URL warning page
+    (`{{ICON}}/{{TITLE}}/{{DOMAIN}}/{{MESSAGE}}` template, or `--block-page`); a real `Page.navigate` STOPS the
+    in-flight load/redirect (so e.g. neverssl's 302 can't win), unlike `document.write` which races it.
+  - **replace** — keeps the original URL: on `frameNavigated` to a replace host, **re-navigate the tab on the same
+    session** so the now-active Fetch catches the reload and `Fetch.fulfillRequest`s the fetched replacement
+    (cached ~60s). A per-session `replaced` guard prevents a reload loop. *(Live script-driven sites only half-render
+    when replaced — cross-origin/CSP — a static page is faithful.)*
+- **UI = a rules table** (`cdp.js`): rows of `domain | action | target/message`, parsed from / serialized to `blt.txt`
+  (saved via the agent `save` op; hot-reloads live). Plus open-tabs chips, Chrome/debug-port status, a `🚫`/data-URL
+  warning feed. One batched `buildLoadScript` round-trip returns folder, exe presence, running state, Chrome version,
+  open targets, `blt.txt`, and the `nav.log` tail as one JSON blob. Folder auto-detects: running `chnav` path →
+  next to the agent's own exe → `CDP_DIR` fallback (cached per-PC in `localStorage`).
+- **Config:** `CDP_DIR` (folder holding `chnav.exe` + `blt.txt`) and `CDP_PORT` (default 9222) in `config.php`,
+  overridable per-PC. `chnav.exe` is a git-ignored build artifact — `cd chrome-nav && build.bat` (PyInstaller) →
+  `dist/chnav.exe`, deploy to `CDP_DIR`. `nav.log`/`blt.txt` are runtime/state on the PC, not committed.
+  **Regulation runs at the agent's privilege (SYSTEM if elevated); for machines you administer.**
+- `chrome-nav/cdp-guide.html` — standalone illustrated guide (build → deploy → site rules → caveats).
 
 ## DNS subsystem (TinyDNS) — `dns/` + `website/dns.php` + `assets/dns.js`
 A second feature reusing the same agent: a network-wide DNS server on a chosen PC, managed from the
