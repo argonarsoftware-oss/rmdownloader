@@ -180,7 +180,18 @@ WORK (login / captcha / play), not just render.
 
 **Caveat for ALL spoof methods (redirect excepted):** CDP Fetch / CORS shims cover **HTTP only**. If phkarera's live
 casino/slots use **websockets**, those aren't shimmable → live games may break under the spoof. `redirect` avoids this entirely.
-**Recommendation:** Method 3 (CDP Fetch shim) for "keep the URL, all via chnav"; `redirect` (1) is the bulletproof fallback.
+
+**Verdict — is Method 3 really the best? Honestly, NO, not overall.** Method 3 is only the best of the *"keep the
+gambling URL"* options (self-contained — touches neither phkarera nor the OS). But it still inherits the two things that
+sink every spoof: (a) **live-game websockets break** (CDP Fetch is HTTP-only), and (b) a **hand-rolled cookie jar is
+fragile** (expiry / path / Secure / HttpOnly / multi-cookie edge cases → flaky logins). For a real login + live-games
+platform, **Method 1 (redirect) is the best OVERALL** — it's the only option that fully works (incl. websockets) with
+zero ongoing fragility; the sole cost is the address bar reading `phkarera.com`, which buys little to hide. **So default
+to `redirect` unless keeping the gambling URL is a hard requirement.** If keep-URL *is* mandatory, note that **Method 5
+(full proxy) has *cleaner* cookie semantics than Method 3** — everything is served same-origin so cookies are first-party
+and "just work" (no manual jar) — at the price of a heavier build; weigh 5 over 3 there. **Method 3 only wins the narrow
+case: keep-URL AND minimal code AND you can tolerate flaky login / no live games.** Bottom line: build `redirect` first,
+treat the spoof (3/5) as a nice-to-have, and don't sink days into a shim that a websocket or a cookie-edge-case can undo.
 
 **Operational notes:** rule domains are **bare** — the leading number in the DNS "top sites" stats is a *visit count*, not part
 of the domain (e.g. the real domain is `em777w9.cc`, NOT `10em777w9.cc` which doesn't resolve; a bare `em777w9.cc` rule also
