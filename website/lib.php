@@ -90,6 +90,58 @@ function dns_insert_chunk($pdo, $chunk) {
     return count($chunk);
 }
 
+// Reduce a hostname to its registrable domain (eTLD+1), collapsing subdomains:
+//   www.google.com, ogads-pa.clients6.google.com -> google.com ;  bbc.co.uk -> bbc.co.uk
+// Uses a small list of common multi-label public suffixes; everything else is "last two labels".
+function registrable_domain($host) {
+    $host = strtolower(rtrim((string)$host, '.'));
+    if ($host === '' || strpos($host, '.') === false) return $host;
+    // a bare IPv4 has no registrable domain — leave it as-is
+    if (preg_match('/^\d{1,3}(\.\d{1,3}){3}$/', $host)) return $host;
+    $l = explode('.', $host);
+    $n = count($l);
+    if ($n <= 2) return $host;
+    $last2 = $l[$n - 2] . '.' . $l[$n - 1];
+    static $two = null;
+    if ($two === null) {
+        $two = array_flip(array(
+            'co.uk','org.uk','me.uk','gov.uk','ac.uk','net.uk','sch.uk',
+            'com.au','net.au','org.au','edu.au','gov.au','id.au',
+            'co.jp','or.jp','ne.jp','ac.jp','go.jp',
+            'com.br','net.br','org.br','gov.br',
+            'co.in','net.in','org.in','gen.in','firm.in','ind.in',
+            'co.nz','net.nz','org.nz','govt.nz','ac.nz',
+            'co.za','org.za','net.za','gov.za',
+            'com.cn','net.cn','org.cn','gov.cn',
+            'com.sg','com.my','com.ph','com.hk','com.tw','com.mx','com.tr',
+            'com.ar','com.co','co.id','co.kr','co.th','com.vn','com.pk',
+            'com.sa','com.eg','com.ng','com.ua','co.il','com.pl','co.ke',
+        ));
+    }
+    if ($n >= 3 && isset($two[$last2])) return $l[$n - 3] . '.' . $last2;
+    return $last2;
+}
+
+// Best-effort flag: does this host look gambling-related? Keyword + known-brand substring match
+// (incl. common PH/Asia online-gambling brands). Heuristic — catches obvious ones, not definitive.
+function is_gambling_domain($host) {
+    $h = strtolower((string)$host);
+    if ($h === '') return false;
+    static $kw = null;
+    if ($kw === null) $kw = array(
+        'casino','poker','slots','sportsbook','sportsbet','gambling','gamble','roulette',
+        'baccarat','blackjack','jackpot','betting','bet365','betway','bookmaker','pokies',
+        'sweepstake','lottery','bingo','sabong','pagcor','onlinebet','wagering',
+        // common PH / Asia online-gambling brands
+        'jilibet','bingoplus','luckycola','okbet','phlwin','swerte','panaloko','747live',
+        'fc777','ph365','mwplay','peso888','gemdisco','nustabet','hawkplay','lodibet',
+        'pisobet','jili777','bet88','phdream','superace','royalwin','winph','tmtplay',
+        'phlwin','phpwin','phwin','winzir','bossjili','slotsgo','megapanalo',
+    );
+    foreach ($kw as $k) { if (strpos($h, $k) !== false) return true; }
+    return false;
+}
+
 // ---- agent identity ----
 
 // All known PCs = static rm_agents() merged with auto-enrolled agents (registry).

@@ -114,21 +114,40 @@ function loadStats() {
   if (!tbody) return;
   var days = document.getElementById('statsRange').value;
   var q = document.getElementById('statsFilter').value.trim();
-  dnsLog({ action: 'stats', days: days, q: q, limit: 50 }).then(function (d) {
+  var group = document.getElementById('statsGroup').checked ? 'base' : 'full';
+  dnsLog({ action: 'stats', days: days, q: q, group: group, limit: 50 }).then(function (d) {
+    var alertEl = document.getElementById('statsAlert');
     if (!d || !d.ok) {
       tbody.innerHTML = '<tr><td colspan="3" class="muted">' +
         esc((d && d.db === false) ? 'Top sites need MySQL (not configured)' : ((d && d.error) || 'error')) + '</td></tr>';
       document.getElementById('statsTotal').textContent = '';
+      if (alertEl) alertEl.hidden = true;
       return;
+    }
+    // Gambling alert banner (info/warning) — driven by the server-side summary over the whole range.
+    var g = d.gambling || { count: 0, visits: 0, sites: [] };
+    if (alertEl) {
+      if (g.count > 0) {
+        var names = (g.sites || []).map(function (s) { return esc(s[0]); });
+        var shown = names.slice(0, 8).join(', ');
+        if (names.length > 8) shown += ', +' + (names.length - 8) + ' more';
+        alertEl.className = 'alert warn';
+        alertEl.innerHTML = '🎲 <b>Gambling-related activity detected</b> — ' + g.count +
+          ' site(s), ' + (g.visits || 0).toLocaleString() + ' visits: ' + shown;
+        alertEl.hidden = false;
+      } else {
+        alertEl.hidden = true;
+      }
     }
     var top = d.top || [];
     var max = top.length ? top[0][1] : 0;
     var rows = '';
     for (var i = 0; i < top.length; i++) {
-      var dom = top[i][0], hits = top[i][1];
+      var dom = top[i][0], hits = top[i][1], gambling = top[i][2];
       var pct = max ? Math.round(hits * 100 / max) : 0;
-      rows += '<tr><td class="l-rank">' + (i + 1) + '</td>' +
-        '<td><span class="bar" style="width:' + pct + '%"></span><span class="bar-label">' + esc(dom) + '</span></td>' +
+      var tag = gambling ? ' <span class="gtag">🎲 gambling</span>' : '';
+      rows += '<tr' + (gambling ? ' class="g-row"' : '') + '><td class="l-rank">' + (i + 1) + '</td>' +
+        '<td><span class="bar" style="width:' + pct + '%"></span><span class="bar-label">' + esc(dom) + tag + '</span></td>' +
         '<td class="l-hits">' + hits.toLocaleString() + '</td></tr>';
     }
     tbody.innerHTML = rows || '<tr><td colspan="3" class="muted">no data yet — let some queries roll up</td></tr>';
@@ -327,6 +346,7 @@ document.getElementById('logAuto').onchange = function () {
 };
 document.getElementById('btnStatsRefresh').onclick = loadStats;
 document.getElementById('statsRange').onchange = loadStats;
+document.getElementById('statsGroup').onchange = loadStats;
 var statsFilterTimer = null;
 document.getElementById('statsFilter').oninput = function () {
   clearTimeout(statsFilterTimer); statsFilterTimer = setTimeout(loadStats, 300);

@@ -71,10 +71,12 @@ $dnsTask = defined('DNS_TASK') ? DNS_TASK : 'TinyDNS';
         <option value="30">Last 30 days</option>
         <option value="0">All time</option>
       </select>
+      <label class="muted" style="margin-left:8px"><input type="checkbox" id="statsGroup" checked> group subdomains</label>
       <input type="text" id="statsFilter" placeholder="filter domain…" style="margin-left:8px;width:200px">
       <span class="spacer"></span>
       <span id="statsTotal" class="muted" style="margin-right:8px"></span>
       <button class="btn" id="btnStatsRefresh">Refresh</button></div>
+    <div id="statsAlert" class="alert" hidden></div>
     <div class="log-wrap">
       <table class="loglist statlist">
         <thead><tr><th class="l-rank">#</th><th>Domain</th><th class="l-hits">Visits</th></tr></thead>

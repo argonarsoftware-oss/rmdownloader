@@ -126,3 +126,9 @@ tr:hover .row-act{visibility:visible}
 .statlist .l-hits{width:90px;text-align:right;font-variant-numeric:tabular-nums}
 .statlist .bar{position:absolute;left:0;top:3px;bottom:3px;background:rgba(88,166,255,.16);border-radius:3px;z-index:0}
 .statlist .bar-label{position:relative;z-index:1}
+.statlist .g-row .bar{background:rgba(248,81,73,.16)}
+.gtag{display:inline-block;margin-left:8px;font-size:11px;font-weight:600;color:#ffb4b4;
+  background:#3a2125;border:1px solid var(--danger);border-radius:999px;padding:0 7px;vertical-align:middle}
+.alert{margin:0 0 10px;padding:10px 14px;border-radius:8px;font-size:13.5px}
+.alert.warn{background:#3a2125;border:1px solid var(--danger);color:#ffd0d0}
+.alert.info{background:#16263a;border:1px solid #388bfd;color:#cfe5ff}

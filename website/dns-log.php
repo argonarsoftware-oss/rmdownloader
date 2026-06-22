@@ -62,23 +62,47 @@ try {
         $limit = isset($_REQUEST['limit']) ? (int)$_REQUEST['limit'] : 50;
         if ($limit < 1) $limit = 1;
         if ($limit > 500) $limit = 500;
+        $group = (isset($_REQUEST['group']) && $_REQUEST['group'] === 'full') ? 'full' : 'base';
 
         $w = 'agent_id = ?';
         $a = array($agent);
         if ($q !== '') { $w .= ' AND domain LIKE ?'; $a[] = '%' . $q . '%'; }
         if ($days > 0) { $w .= ' AND day >= (CURDATE() - INTERVAL ' . (int)$days . ' DAY)'; }
 
-        $st = $pdo->prepare('SELECT domain, SUM(hits) hits FROM dns_stats_daily WHERE ' . $w
-                          . ' GROUP BY domain ORDER BY hits DESC LIMIT ' . $limit);
+        // Pull per-domain sums and fold into base domains (collapse subdomains) in PHP.
+        $st = $pdo->prepare('SELECT domain, SUM(hits) h FROM dns_stats_daily WHERE ' . $w
+                          . ' GROUP BY domain ORDER BY h DESC LIMIT 10000');
         $st->execute($a);
+        $map = array();
+        while ($row = $st->fetch()) {
+            $key = ($group === 'base') ? registrable_domain($row['domain']) : $row['domain'];
+            if (!isset($map[$key])) $map[$key] = 0;
+            $map[$key] += (int)$row['h'];
+        }
+        arsort($map);
+
+        // Top N (with per-row gambling flag) + a gambling summary over the WHOLE range.
         $top = array();
-        while ($row = $st->fetch()) $top[] = array($row['domain'], (int)$row['hits']);
+        $i = 0;
+        $gSites = array();
+        $gVisits = 0;
+        foreach ($map as $dom => $h) {
+            $g = is_gambling_domain($dom) ? 1 : 0;
+            if ($g) { $gVisits += $h; $gSites[$dom] = $h; }
+            if ($i < $limit) { $top[] = array($dom, $h, $g); $i++; }
+        }
+        arsort($gSites);
+        $gList = array();
+        $j = 0;
+        foreach ($gSites as $d => $h) { $gList[] = array($d, $h); if (++$j >= 20) break; }
 
         $st = $pdo->prepare('SELECT COALESCE(SUM(hits),0) FROM dns_stats_daily WHERE ' . $w);
         $st->execute($a);
         $total = (int)$st->fetchColumn();
 
-        echo json_encode(array('ok' => true, 'db' => true, 'days' => $days, 'total' => $total, 'top' => $top));
+        echo json_encode(array('ok' => true, 'db' => true, 'days' => $days, 'group' => $group,
+            'total' => $total, 'top' => $top,
+            'gambling' => array('count' => count($gSites), 'visits' => $gVisits, 'sites' => $gList)));
         exit;
     }
 

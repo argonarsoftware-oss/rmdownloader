@@ -147,6 +147,11 @@ browser. Three parts:
     stay tiny. `dns-log.php?action=stats&days=N` powers the **Top sites** card (`SUM(hits)` per domain over
     a date range). Rollup is best-effort inside `dns_sync_agent` — a not-yet-migrated stats table can't
     break ingest. **All rollup/prune/stats is pure VPS MySQL — zero extra interaction with `dnl.exe`.**
+  - **Top-sites refinements:** `?action=stats&group=base` folds subdomains into the registrable domain
+    (eTLD+1 via `registrable_domain()` in `lib.php`; `group=full` keeps full hostnames). Each entry carries
+    a heuristic `gambling` flag (`is_gambling_domain()` — keyword/known-brand substring match incl. PH/Asia
+    betting brands) and the response includes a `gambling` summary (`count`/`visits`/`sites`); the UI shows a
+    warning **alert banner** + per-row badge. Same grouping + flag in `dns-text.php`.
 
 ## Queue protocol
 Browser/API → `enqueue_command` writes `data/<id>/cmd/<cmdId>.json` → agent long-poll claims it →

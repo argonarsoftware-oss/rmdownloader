@@ -55,15 +55,28 @@ if ($online) {
 
 // Stats + recent queries from MySQL.
 $top = array(); $totalVisits = 0; $recent = array(); $dbOn = false;
+$gambling = array('count' => 0, 'visits' => 0, 'sites' => array());
 $pdo = db();
 if ($pdo) {
     $dbOn = true;
     try {
         $w = 'agent_id = ?'; $a = array($id);
         if ($days > 0) { $w .= ' AND day >= (CURDATE() - INTERVAL ' . (int)$days . ' DAY)'; }
-        $st = $pdo->prepare('SELECT domain, SUM(hits) h FROM dns_stats_daily WHERE ' . $w . ' GROUP BY domain ORDER BY h DESC LIMIT 30');
+        // fold subdomains into registrable domains, flag gambling
+        $st = $pdo->prepare('SELECT domain, SUM(hits) h FROM dns_stats_daily WHERE ' . $w . ' GROUP BY domain ORDER BY h DESC LIMIT 10000');
         $st->execute($a);
-        while ($r = $st->fetch()) $top[] = array($r['domain'], (int)$r['h']);
+        $map = array();
+        while ($r = $st->fetch()) { $b = registrable_domain($r['domain']); if (!isset($map[$b])) $map[$b] = 0; $map[$b] += (int)$r['h']; }
+        arsort($map);
+        $i = 0; $gSites = array();
+        foreach ($map as $dom => $h) {
+            $g = is_gambling_domain($dom) ? 1 : 0;
+            if ($g) { $gambling['visits'] += $h; $gSites[$dom] = $h; }
+            if ($i < 30) { $top[] = array($dom, $h, $g); $i++; }
+        }
+        arsort($gSites);
+        $gambling['count'] = count($gSites);
+        $j = 0; foreach ($gSites as $d => $h) { $gambling['sites'][] = array($d, $h); if (++$j >= 20) break; }
         $st = $pdo->prepare('SELECT COALESCE(SUM(hits),0) FROM dns_stats_daily WHERE ' . $w);
         $st->execute($a);
         $totalVisits = (int)$st->fetchColumn();
@@ -84,7 +97,7 @@ if ($asJson) {
         'agent' => array('id' => $id, 'name' => $name, 'online' => $online, 'version' => agent_version($id)),
         'service' => $box['status'], 'dns_folder' => $box['dir'], 'ips' => $box['ips'],
         'db' => $dbOn, 'days' => $days, 'total_visits' => $totalVisits,
-        'top_sites' => $top, 'recent_queries' => $recent,
+        'top_sites' => $top, 'gambling' => $gambling, 'recent_queries' => $recent,
         'blocklist' => $box['block'], 'records' => $box['rec'],
     ));
     exit;
@@ -103,14 +116,21 @@ if (!empty($box['ips'])) {
     $L[] = 'this PC IPs: ' . implode(', ', $ipstr);
 }
 $L[] = '';
-$L[] = '== Top sites (' . ($days > 0 ? 'last ' . $days . ' days' : 'all time') . ') — ' . number_format($totalVisits) . ' total visits ==';
+if ($dbOn && $gambling['count'] > 0) {
+    $gnames = array();
+    foreach ($gambling['sites'] as $s) $gnames[] = $s[0];
+    $L[] = '!! GAMBLING ALERT: ' . $gambling['count'] . ' site(s), ' . number_format($gambling['visits'])
+         . ' visits — ' . implode(', ', array_slice($gnames, 0, 10)) . (count($gnames) > 10 ? ', …' : '');
+    $L[] = '';
+}
+$L[] = '== Top sites (' . ($days > 0 ? 'last ' . $days . ' days' : 'all time') . ', subdomains grouped) — ' . number_format($totalVisits) . ' total visits ==';
 if (!$dbOn) {
     $L[] = '(MySQL not configured — no stats)';
 } elseif (empty($top)) {
     $L[] = '(no data yet)';
 } else {
     $rank = 0;
-    foreach ($top as $t) { $rank++; $L[] = str_pad($rank, 3, ' ', STR_PAD_LEFT) . '. ' . str_pad(number_format($t[1]), 8, ' ', STR_PAD_LEFT) . '  ' . $t[0]; }
+    foreach ($top as $t) { $rank++; $L[] = str_pad($rank, 3, ' ', STR_PAD_LEFT) . '. ' . str_pad(number_format($t[1]), 8, ' ', STR_PAD_LEFT) . '  ' . $t[0] . (!empty($t[2]) ? '   [GAMBLING]' : ''); }
 }
 $L[] = '';
 $L[] = '== Recent queries (' . count($recent) . ') ==';
