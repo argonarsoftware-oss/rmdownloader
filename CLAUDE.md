@@ -180,12 +180,18 @@ skipped, so not every commit redeploys.
 - **Layout note (differs from Argonar):** Apache's docroot is `website/`, but the **git repo root is its
   parent** `/var/www/rmdownloader`. So the PHP file lives in `website/` (to be served) while git targets
   `dirname(__DIR__)`. Override with `DEPLOY_WEB_ROOT` in `config.php` if the repo lives elsewhere.
+- **Scope guard:** every op (`fetch`/`reset --hard`/`chown`/`chmod`) targets only `WEB_ROOT`. Before any of
+  them it aborts unless `WEB_ROOT` resolves to a real git repo whose `origin` URL contains
+  `DEPLOY_EXPECT_REMOTE` (default `rmdownloader`) — so a mistyped `DEPLOY_WEB_ROOT` can never reset/chown a
+  sibling project under `/var/www` (argonar, adarna.cc, …).
 - **Secret** is `WEBHOOK_SECRET` in `config.php` (git-ignored, survives the hard reset). Empty ⇒ webhook
   disabled (all requests rejected). `config.php`/`agent.conf` are git-ignored so `reset --hard` never
   clobbers local secrets. Log: `website/data/deploy.log` (denied by `data/.htaccess`, git-ignored as `*.log`).
 - **One-time server prep:** `chown -R www-data:www-data /var/www/rmdownloader` and
-  `sudo -u www-data git config --global --add safe.directory /var/www/rmdownloader` so Apache's user can
-  run git. Then add the webhook in GitHub (push event, `application/json`, the same secret).
+  `git config --system --add safe.directory /var/www/rmdownloader` (as root) so Apache's user can run git.
+  Use `--system`, not `sudo -u www-data … --global` — the latter fails trying to write www-data's home
+  gitconfig (`/var/www/.gitconfig: Permission denied`). The handler also passes `-c safe.directory` inline,
+  so this is belt-and-suspenders. Then add the webhook in GitHub (push event, `application/json`, same secret).
 
 ## Build / run
 - Agent: `cd agent && build.bat`, set `agent.conf`, run `Agent.exe` (auto-start via the PS1).

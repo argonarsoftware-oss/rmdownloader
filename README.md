@@ -103,7 +103,9 @@ contains `[deploy]`** (other pushes are skipped), so you control exactly when th
 ```bash
 # one-time server prep: let Apache's user run git in the repo
 sudo chown -R www-data:www-data /var/www/rmdownloader
-sudo -u www-data git config --global --add safe.directory /var/www/rmdownloader
+# mark the repo safe for ALL users in the system gitconfig (run as root, NOT `sudo -u www-data`,
+# which would fail trying to write www-data's home gitconfig):
+sudo git config --system --add safe.directory /var/www/rmdownloader
 ```
 
 Set a secret in `config.php`:

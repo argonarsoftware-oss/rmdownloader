@@ -33,6 +33,10 @@ require_once __DIR__ . '/config.php';
 // WEB_ROOT is the GIT REPO ROOT (parent of this website/ dir), not the Apache docroot.
 define('WEB_ROOT', defined('DEPLOY_WEB_ROOT') ? DEPLOY_WEB_ROOT : dirname(__DIR__));
 define('DEPLOY_KEYWORD', '[deploy]');
+// Safety scope: the deploy ONLY ever touches WEB_ROOT, and only if that dir is genuinely this
+// repo (its origin remote contains this substring). Guards against a misconfigured DEPLOY_WEB_ROOT
+// ever git-resetting or chowning a sibling project under /var/www (argonar, adarna.cc, …).
+define('DEPLOY_EXPECT_REMOTE', defined('DEPLOY_EXPECT_REMOTE_OVERRIDE') ? DEPLOY_EXPECT_REMOTE_OVERRIDE : 'rmdownloader');
 define('LOG_FILE', (defined('DATA_DIR') ? DATA_DIR : __DIR__ . '/data') . '/deploy.log');
 define('ALLOWED_BRANCH', 'refs/heads/main');
 
@@ -132,10 +136,28 @@ logMessage("DEPLOYING: \"{$deployCommit}\"");
 
 $output = array();
 $returnCode = 0;
-$root = WEB_ROOT;
+$root = realpath(WEB_ROOT);   // canonical absolute path; false if it doesn't exist
 
 // Skip git's "dubious ownership" check (www-data running git in a root-owned tree).
 putenv('GIT_CONFIG_GLOBAL=/dev/null');
+
+// --- SCOPE GUARD: never operate on anything that isn't THIS repo ---
+// 1) WEB_ROOT must resolve and actually contain a .git (so we can't reset/chown a non-repo dir).
+if ($root === false || !is_dir($root . '/.git')) {
+    http_response_code(500);
+    logMessage('ABORTED: WEB_ROOT (' . WEB_ROOT . ') is not a git repository — refusing to deploy');
+    exit('Deploy aborted: WEB_ROOT is not a git repository');
+}
+// 2) Its origin remote must be the expected repo, so a wrong path can't hit a sibling project.
+$remoteLines = array();
+exec('git -c safe.directory=' . escapeshellarg($root) . ' -C ' . escapeshellarg($root)
+   . ' config --get remote.origin.url 2>&1', $remoteLines);
+$origin = isset($remoteLines[0]) ? trim($remoteLines[0]) : '';
+if (stripos($origin, DEPLOY_EXPECT_REMOTE) === false) {
+    http_response_code(500);
+    logMessage("ABORTED: origin '{$origin}' is not '" . DEPLOY_EXPECT_REMOTE . "' — refusing to deploy {$root}");
+    exit('Deploy aborted: unexpected git remote');
+}
 
 exec('git -c safe.directory=' . escapeshellarg($root) . ' -C ' . escapeshellarg($root)
    . ' fetch origin main 2>&1', $output, $returnCode);
