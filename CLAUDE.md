@@ -145,6 +145,48 @@ does everything by sending PowerShell through the agent's `exec` op (`api.php?ac
   **Regulation runs at the agent's privilege (SYSTEM if elevated); for machines you administer.**
 - `chrome-nav/cdp-guide.html` — standalone illustrated guide (build → deploy → site rules → caveats).
 
+### Cross-origin `replace` — making the spoof functional (DESIGN NOTES / TODO — not built yet)
+**Goal:** when a PC hits a blocked domain (e.g. a rotating gambling domain like `em777w9.cc`), serve our own site
+**phkarera.com** (repo: `argonarsoftware-oss/lswin`) under the *original* URL via a `replace` rule, and have it actually
+WORK (login / captcha / play), not just render.
+
+**Where it stands today (verified):**
+- `replace` + `inject_base()` already renders phkarera fully under the gambling URL (images/CSS/JS load — screenshot-confirmed).
+- BUT phkarera's own API calls (`/api/auth/captcha`, `/api/auth/login`) run from origin `www.em777w9.cc` → `phkarera.com`
+  and are **blocked by CORS** (no `Access-Control-Allow-Origin`); the session cookie would also be a **third-party cookie**.
+  So the page shows but login/play don't function under the spoof.
+- **`redirect`** (URL actually changes to `phkarera.com`) is the only option that fully works **today** — same-origin, no
+  CORS/cookie issues. Trade-off: the address bar shows `phkarera.com`, not the gambling domain. This is the safe fallback.
+
+**phkarera / lswin facts (for whoever implements this):** PHP app — `bootstrap.php` (session config), `routes.php` (router),
+`src/` (`Lswin\` classes). Session cookie is currently **`SameSite=Lax`**, httponly, secure-on-HTTPS. Auth routes:
+`GET /api/auth/captcha`, `POST /api/auth/{register,login,logout}` → `AuthController`.
+
+**Methods considered (decide tomorrow):**
+1. **Redirect** — set the rule to `redirect https://phkarera.com/`. Zero work, fully functional, URL changes. (Safe default.)
+2. **Chrome launch flag (via chnav)** — chnav controls the launch, so add `--disable-features=TrackingProtection3pcd`
+   (current 3p-cookie-blocking feature name; drifts per Chrome version — must test) to `launch_chrome()`, so the third-party
+   session cookie is allowed. Still needs phkarera to send CORS + `SameSite=None; Secure`.
+3. **CDP Fetch shim in chnav (PREFERRED — "all via chnav", no phkarera/OS changes):** for the replace target's requests,
+   intercept on the debug port and (a) add `Access-Control-Allow-Origin: <gambling origin>` + `Access-Control-Allow-Credentials:
+   true` to responses, answer `OPTIONS` preflight with 204; (b) keep a cookie jar — read phkarera's `Set-Cookie` from the login
+   response and inject the `Cookie` header on later requests via `Fetch.continueRequest`, so the browser never has to send a
+   3p cookie. Self-contained; doesn't touch the lswin repo. Needs Fetch at the **Response** stage for the target host.
+4. **CORS in phkarera (lswin)** — add a CORS middleware (echo gambling origin + `Allow-Credentials` + preflight) in
+   `bootstrap.php`/`routes.php`, and switch the session cookie to `SameSite=None; Secure`. Caveat: cookie still third-party →
+   may still need the launch flag/policy from #2 on the managed PCs.
+5. **Full reverse proxy in chnav** — don't inject `<base>`; instead proxy EVERY `em777w9.cc/*` request → `phkarera.com/*`
+   (rewrite `Set-Cookie`/`Location` domains). Genuinely same-origin → no CORS, first-party cookies. Heaviest build + per-request latency.
+
+**Caveat for ALL spoof methods (redirect excepted):** CDP Fetch / CORS shims cover **HTTP only**. If phkarera's live
+casino/slots use **websockets**, those aren't shimmable → live games may break under the spoof. `redirect` avoids this entirely.
+**Recommendation:** Method 3 (CDP Fetch shim) for "keep the URL, all via chnav"; `redirect` (1) is the bulletproof fallback.
+
+**Operational notes:** rule domains are **bare** — the leading number in the DNS "top sites" stats is a *visit count*, not part
+of the domain (e.g. the real domain is `em777w9.cc`, NOT `10em777w9.cc` which doesn't resolve; a bare `em777w9.cc` rule also
+covers `www.em777w9.cc`). Deploy target on the test PC: `G:\Game Menu\chnav.exe` (set the CDP page's folder field to
+`G:\Game Menu`, or `CDP_DIR`).
+
 ## DNS subsystem (TinyDNS) — `dns/` + `website/dns.php` + `assets/dns.js`
 A second feature reusing the same agent: a network-wide DNS server on a chosen PC, managed from the
 browser. Three parts:
