@@ -109,6 +109,7 @@ $dnsTask = defined('DNS_TASK') ? DNS_TASK : 'TinyDNS';
 
   <section class="dns-card">
     <div class="dns-head">📜 Query log <span class="muted">recent raw lookups (newest first)</span>
+      <a class="btn ghost" href="dns-queries.php" title="Open the full-page query log with paging">⤢ Full log</a>
       <input type="text" id="logFilter" placeholder="filter domain / IP…" style="margin-left:8px;width:220px">
       <span class="spacer"></span>
       <label class="muted" style="margin-right:8px"><input type="checkbox" id="logAuto"> auto-refresh</label>
