@@ -29,6 +29,8 @@ or tunnel is needed — you just run the agent.
     through the `exec` op via `api.php`; query-log history is read from `dns-log.php` (MySQL) with a live
     file-tail fallback.
   - `dns-log.php` — reads DNS query history from MySQL (filter/page/clear); returns `db:false` when no DB.
+  - `dns-text.php` — automation/Claude-Code view: `?key=<API_KEY>` (or login) returns a plain-text DNS
+    report (service status, IPs, top sites, recent queries, blocklist+records); `&format=json` for JSON.
   - `dns-sync.php` + `dns-sync-core.php` — the **agent bridge**: ingest new `queries.log` lines into MySQL
     via a shared read (never stops `dnl.exe`). `cron/dns-sync.php` is the all-agents CLI for cron.
   - `dns-schema.sql` — MySQL schema (`dns_queries`, `dns_ingest_state`) + least-priv app user.
