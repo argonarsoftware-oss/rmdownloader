@@ -55,11 +55,13 @@ or tunnel is needed — you just run the agent.
 - `vps-setup-guide.html` — standalone illustrated setup guide (local file).
 - `dns/` — the **TinyDNS** server managed by the DNS page (see DNS subsystem below). Standalone Python,
   shipped/run on the DNS machine as `dnl.exe`; not part of the agent build.
+- `chrome-nav/` — the **Chrome navigation monitor** subproject (`chrome_nav_monitor.py` + `build.bat` +
+  `README.md`). Standalone CDP tool; not part of the agent build (see below).
 
-## chrome_nav_monitor.py — standalone tool (NOT part of the agent)
-A self-contained Python utility at the repo root that prints Chrome's navigation in real time via
+## chrome-nav/ — Chrome navigation monitor (standalone, NOT part of the agent)
+A self-contained Python utility in `chrome-nav/` that prints Chrome's navigation in real time via
 the Chrome DevTools Protocol. **Strictly standalone** — it shares no code with `Agent.cs`/`agentsvc.exe`,
-is not in `build.bat`, and never touches the queue/`data/`. Don't merge it into `Agent.exe`.
+is not in the agent `build.bat`, and never touches the queue/`data/`. Don't merge it into `Agent.exe`.
 - **What it does:** detects the OS + finds Chrome, kills any running Chrome and waits for full exit,
   relaunches with `--remote-debugging-port` + a dedicated `--user-data-dir`, polls
   `http://127.0.0.1:<port>/json/version` until the port is up, then attaches to the page websocket and
@@ -74,10 +76,11 @@ is not in `build.bat`, and never touches the queue/`data/`. Don't merge it into 
   `--no-launch` attaches only and errors if nothing is listening.
 - **Deps:** `requests` + `websocket-client` only (no Selenium). CLI: `--port` (9222),
   `--user-data-dir` (`<tmp>/chrome-cdp-monitor`), `--requests`, `--no-launch`, `--force-restart`.
-- **Run:** `py chrome_nav_monitor.py [--requests]`.
-- **Single-file exe (like Agent.exe):** `pyinstaller --onefile chrome_nav_monitor.py` →
-  `dist/chrome_nav_monitor.exe` (runs with no Python installed). The `.py` is committed; the exe and
-  PyInstaller `dist/`,`build_pyi/` output are git-ignored — build locally, same as `Agent.exe`.
+- **Run:** `cd chrome-nav && py chrome_nav_monitor.py [--requests]`.
+- **Single-file exe (like dnl.exe):** `cd chrome-nav && build.bat` (PyInstaller) →
+  `chrome-nav/dist/chrome_nav_monitor.exe` (runs with no Python installed). The `.py` is committed; the
+  exe and PyInstaller `dist/`,`build/` output are git-ignored (`chrome-nav/.gitignore`) — build locally.
+  Full details in `chrome-nav/README.md`.
 - **TODO / continuation (multi-tab auto-follow):** today it attaches to a single page target (the tab
   picked from `/json`), so new tabs/windows aren't tracked. To follow the whole browser: connect to the
   **browser** websocket (`/json/version` → `webSocketDebuggerUrl`) instead of one page, send

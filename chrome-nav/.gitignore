@@ -1,0 +1,8 @@
+# build output — keep the source, not the artifacts
+dist/
+build/
+build_pyi/
+*.spec
+chrome_nav_monitor.exe
+__pycache__/
+*.pyc
