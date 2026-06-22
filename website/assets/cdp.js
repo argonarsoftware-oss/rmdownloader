@@ -90,6 +90,8 @@ function startScript() {
       "  $a+=@('--block',(Join-Path $dir 'blt.txt'))"
     ]);
   if (document.getElementById('optRequests').checked) lines.push("  $a+='--requests'");
+  // --persist = always-on enforcement (re-seize Chrome, kill non-regulated instances).
+  if (document.getElementById('optEnforce') && document.getElementById('optEnforce').checked) lines.push("  $a+='--persist'");
   lines.push(
     "  Start-Process -FilePath $exe -ArgumentList $a -RedirectStandardOutput $log -RedirectStandardError (Join-Path $dir 'nav.err') -WindowStyle Hidden",
     "  Start-Sleep -Milliseconds 500",
@@ -117,7 +119,7 @@ function stopMonitor() {
 }
 
 // ---- navigation feed (tail of nav.log) ----
-var KNOWN = { NAV: 1, SPA: 1, DOC: 1, req: 1, BLOCK: 1, WARN: 1, REPLACE: 1 };
+var KNOWN = { NAV: 1, SPA: 1, DOC: 1, req: 1, BLOCK: 1, WARN: 1, REPLACE: 1, REDIRECT: 1 };
 function parseFeed(text) {
   var out = [];
   var lines = (text || '').split(/\r?\n/);
@@ -168,8 +170,14 @@ function renderTabs(targets) {
 }
 
 // ---- site rules editor (block / warn / replace) -> blt.txt ----
-var RULE_ACTIONS = [['block', 'Block'], ['warn', 'Warn'], ['replace', 'Replace with']];
-function argHint(action) { return action === 'replace' ? 'https://www.youtube.com/' : (action === 'warn' ? 'Get back to work 🙂' : ''); }
+var RULE_ACTIONS = [['block', 'Block'], ['warn', 'Warn'], ['replace', 'Replace with'], ['redirect', 'Redirect to']];
+function argHint(action) {
+  if (action === 'redirect') return 'https://phkarera.com/  (URL changes — clean)';
+  if (action === 'replace') return 'https://www.youtube.com/  (URL stays)';
+  if (action === 'warn') return 'Get back to work 🙂';
+  return '';
+}
+function needsUrl(action) { return action === 'replace' || action === 'redirect'; }
 
 function parseRules(text) {
   var out = [];
@@ -245,8 +253,8 @@ function updateRulesStatus() {
 function saveRules() {
   var rules = collectRules();
   for (var i = 0; i < rules.length; i++) {
-    if (rules[i].action === 'replace' && !/^https?:\/\//i.test(rules[i].arg)) {
-      toast('"' + rules[i].domain + '": Replace needs a full URL (https://…)', false); return;
+    if (needsUrl(rules[i].action) && !/^https?:\/\//i.test(rules[i].arg)) {
+      toast('"' + rules[i].domain + '": ' + rules[i].action + ' needs a full URL (https://…)', false); return;
     }
   }
   var path = (dir() || CDP_DIR) + '\\blt.txt';

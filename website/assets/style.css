@@ -108,6 +108,7 @@ tr:hover .row-act{visibility:visible}
 .d-info{color:#8b95a7;font-style:italic}
 .d-warn{color:#caa24a;font-weight:600}
 .d-replace{color:#58a6ff;font-weight:600}
+.d-redirect{color:#a371f7;font-weight:600}
 .tab-chip{display:inline-flex;align-items:center;gap:6px;max-width:340px;background:#0c0e14;border:1px solid var(--line);
   border-radius:6px;padding:4px 9px;font-size:12px;margin:3px 4px 0 0}
 .tab-chip b{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:300px}

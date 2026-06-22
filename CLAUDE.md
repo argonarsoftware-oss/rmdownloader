@@ -109,8 +109,9 @@ does everything by sending PowerShell through the agent's `exec` op (`api.php?ac
   `--disk-cache-size=1` (so a cached page still triggers the network request that interception needs).
 - **Regulation is browser-level** (`run_browser`): connects to the *browser* websocket, `Target.setAutoAttach`
   (flat, `waitForDebuggerOnStart`) so every tab/window is covered. Rules come from **`blt.txt`** (`RuleSet`,
-  hot-reloaded ~2s; read `utf-8-sig` so a BOM can't break the first rule). Format: `<domain> [block|warn <msg>|replace <url>]`,
-  bare domain = block, `*.x` wildcard, a bare domain also matches subdomains.
+  hot-reloaded ~2s; read `utf-8-sig` so a BOM can't break the first rule). Format:
+  `<domain> [block | warn <msg> | replace <url> | redirect <url>]`, bare domain = block, `*.x` wildcard,
+  a bare domain also matches subdomains.
 - **Enforcement mechanics (load-bearing):** the main-frame *document* request of a freshly-opened tab races Fetch
   setup and can't be paused reliably (only subresources pause). So:
   - **block/warn** — enforced on `Page.frameNavigated` via `Page.navigate` to a `data:` URL warning page
@@ -118,8 +119,17 @@ does everything by sending PowerShell through the agent's `exec` op (`api.php?ac
     in-flight load/redirect (so e.g. neverssl's 302 can't win), unlike `document.write` which races it.
   - **replace** — keeps the original URL: on `frameNavigated` to a replace host, **re-navigate the tab on the same
     session** so the now-active Fetch catches the reload and `Fetch.fulfillRequest`s the fetched replacement
-    (cached ~60s). A per-session `replaced` guard prevents a reload loop. *(Live script-driven sites only half-render
-    when replaced — cross-origin/CSP — a static page is faithful.)*
+    (cached ~60s). A per-session `replaced` guard prevents a reload loop. *(Cross-origin caveat: the target's
+    root-relative assets — e.g. `/assets/x.jpg` — resolve against the spoofed origin and 404, so images/assets can
+    break; a fully-absolute-URL page is faithful. Prefer **redirect** when you just want to send traffic elsewhere.)*
+  - **redirect** — the URL actually **changes** to the target (`Page.navigate` to it), so it's same-origin and renders
+    perfectly (no cross-origin asset breakage). Used for e.g. sending gambling domains to an approved site.
+- **Always-on enforcement (`--persist`, the `🔒 enforce` checkbox):** `run_persistent` keeps Chrome under
+  regulation — it **re-seizes** (relaunches the regulated instance) whenever Chrome is closed, and while running,
+  `run_browser` periodically calls `kill_foreign_chrome()` to **kill any Chrome that isn't the regulated instance**
+  (identified by the process that owns the debug port, so it never kills its own renderers). Closes the "close the
+  debug Chrome / open a normal one / open a second window" bypasses. Regulates **Chrome only** — other browsers are
+  OS-policy territory.
 - **UI = a rules table** (`cdp.js`): rows of `domain | action | target/message`, parsed from / serialized to `blt.txt`
   (saved via the agent `save` op; hot-reloads live). Plus open-tabs chips, Chrome/debug-port status, a `🚫`/data-URL
   warning feed. One batched `buildLoadScript` round-trip returns folder, exe presence, running state, Chrome version,

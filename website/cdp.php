@@ -33,6 +33,7 @@ $cdpPort = defined('CDP_PORT') ? CDP_PORT : 9222;
   <label class="muted">port</label>
   <input type="text" id="cdpPort" style="width:64px">
   <label class="muted" title="Also log every request URL (Network.requestWillBeSent)"><input type="checkbox" id="optRequests"> requests</label>
+  <label class="muted" title="Always-on: re-seize Chrome if closed, and kill any non-regulated Chrome so the rules can't be escaped"><input type="checkbox" id="optEnforce"> 🔒 enforce</label>
   <button class="btn" id="btnReload">Load</button>
   <span class="sep"></span>
   <span id="cdpStatus" class="pill">monitor: …</span>
@@ -68,9 +69,10 @@ $cdpPort = defined('CDP_PORT') ? CDP_PORT : 9222;
     </table>
     <div class="muted" style="font-size:12px;margin-top:8px">
       <b>Block</b> → warning page &nbsp;·&nbsp; <b>Warn</b> → your custom message &nbsp;·&nbsp;
-      <b>Replace with</b> → serve another site under the typed address (e.g. <code>facebook.com → https://www.youtube.com/</code>).
-      Saved as <code>blt.txt</code>; the monitor hot-reloads it. <i>Live script-driven sites only half-render when replaced
-      (cross-origin); a static page is faithful.</i>
+      <b>Replace with</b> → serve another site under the typed address, <i>URL stays</i> (e.g. <code>facebook.com → youtube.com</code>) &nbsp;·&nbsp;
+      <b>Redirect to</b> → send to another site, <i>URL changes</i> (e.g. gambling → <code>https://phkarera.com/</code>).
+      Saved as <code>blt.txt</code>; hot-reloaded live. <i>Replace can break a site's images/assets across origins — prefer
+      Redirect when you just want to send traffic elsewhere.</i>
     </div>
   </section>
 

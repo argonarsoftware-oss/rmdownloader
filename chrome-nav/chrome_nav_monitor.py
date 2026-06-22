@@ -144,6 +144,31 @@ def chrome_running():
     return _posix_chrome_running(["Google Chrome", "chrome", "chromium", "chromium-browser"])
 
 
+def kill_foreign_chrome(port):
+    """Kill any chrome.exe that is NOT part of our regulated (debug) instance — so a user
+    can't open a second, unregulated Chrome alongside it. Our instance is identified by the
+    process that OWNS the debug port (reliable: our own renderers trace back to it; if the
+    listener can't be found we kill nothing). Windows only."""
+    if platform.system() != "Windows":
+        return
+    ps = (
+        "$our=(Get-NetTCPConnection -LocalPort %d -State Listen -ErrorAction SilentlyContinue | "
+        "Select-Object -First 1 -ExpandProperty OwningProcess);"
+        "if(-not $our){return};"
+        "$p=Get-CimInstance Win32_Process -Filter \"Name='chrome.exe'\";"
+        "$par=@{};foreach($x in $p){$par[[int]$x.ProcessId]=[int]$x.ParentProcessId};"
+        "function Root($id){while($par.ContainsKey($id) -and $par.ContainsKey($par[$id])){$id=$par[$id]};return $id};"
+        "foreach($x in $p){if((Root ([int]$x.ProcessId)) -ne [int]$our){"
+        "Stop-Process -Id ([int]$x.ProcessId) -Force -ErrorAction SilentlyContinue}}"
+    ) % port
+    try:
+        subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", ps],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                       creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0), timeout=10)
+    except Exception:
+        pass
+
+
 # --------------------------------------------------------------------------- #
 # Launch Chrome
 # --------------------------------------------------------------------------- #
@@ -348,7 +373,7 @@ class RuleSet(object):
                         pattern = parts[0].lower()
                         action = parts[1].lower() if len(parts) > 1 else "block"
                         arg = parts[2].strip() if len(parts) > 2 else ""
-                        if action not in ("block", "warn", "replace"):
+                        if action not in ("block", "warn", "replace", "redirect"):
                             action, arg = "block", ""
                         rule = {"action": action, "arg": arg}
                         if pattern.startswith("*."):
@@ -454,6 +479,11 @@ def enforce_catchup(client, session_id, rule, url, rules):
     action = rule["action"]
     if action == "replace":
         return
+    if action == "redirect":
+        if rule["arg"]:
+            log("REDIRECT  %s -> %s" % (url, rule["arg"]))
+            client.send("Page.navigate", {"url": rule["arg"]}, session_id)
+        return
     host = host_of(url)
     if action == "warn":
         log("WARN      %s" % url)
@@ -510,11 +540,24 @@ def run_browser(args, info, rules, stop):
         log("Browser-level %s. Press Ctrl+C to stop." % mode)
         log("-" * 60)
         next_reload = time.time() + 2
+        next_check = time.time() + 4
         while not stop["flag"]:
-            if rules and time.time() >= next_reload:
+            now = time.time()
+            if rules and now >= next_reload:
                 rules.maybe_reload()
-                next_reload = time.time() + 2
-            msg = client.recv()
+                next_reload = now + 2
+            if now >= next_check:
+                # If our regulated Chrome died, return so the caller re-seizes (persist) or exits.
+                if not is_devtools_up(args.port):
+                    break
+                # Always-on enforcement: kill any Chrome that isn't our regulated instance.
+                if getattr(args, "persist", False):
+                    kill_foreign_chrome(args.port)
+                next_check = now + 4
+            try:
+                msg = client.recv()
+            except Exception:
+                break   # connection dropped (Chrome closed) -> re-seize / exit
             if msg is None:
                 continue
             # A new tab is paused until its Fetch interception is live: only resume it
@@ -567,6 +610,12 @@ def run_browser(args, info, rules, stop):
                         if rule["arg"] and replaced.get(sid) != url:
                             replaced[sid] = url
                             client.send("Page.navigate", {"url": url}, sid)
+                    elif rule["action"] == "redirect":
+                        # URL actually changes to the target (clean — no cross-origin). Guard
+                        # so multiple frameNavigated for the same source url don't re-fire.
+                        if rule["arg"] and replaced.get(sid) != url:
+                            replaced[sid] = url
+                            enforce_catchup(client, sid, rule, url, rules)
                     else:
                         replaced.pop(sid, None)
                         enforce_catchup(client, sid, rule, url, rules)
@@ -608,6 +657,10 @@ def main():
     parser.add_argument("--force-restart", action="store_true",
                         help="Kill and relaunch Chrome even if the debug port "
                              "is already open (default: attach to it)")
+    parser.add_argument("--persist", action="store_true",
+                        help="Always-on enforcement: keep re-seizing Chrome — relaunch the "
+                             "regulated instance whenever it's closed, and kill any Chrome that "
+                             "isn't the regulated (debug) instance, so the rules can't be escaped.")
     args = parser.parse_args()
 
     rules = None
@@ -615,46 +668,52 @@ def main():
         rules = RuleSet(args.block, args.block_page)
     regulate = rules is not None or args.all_tabs
 
-    chrome_proc = None
     stop = {"flag": False}
 
     def on_sigint(signum, frame):
         stop["flag"] = True
     signal.signal(signal.SIGINT, on_sigint)
 
-    try:
-        # Decision: VERIFY the debug port first. If Chrome is already debugging on
-        # this port, attach to it (don't disturb it). Otherwise — whether a plain
-        # Chrome is running or none at all — relaunch Chrome with the debug port.
-        already = is_devtools_up(args.port)
-        if already and not args.force_restart:
-            log("Verified: Chrome is already debugging on port %d (%s) — attaching, not restarting."
-                % (args.port, already.get("Browser", "?")))
-        elif args.no_launch:
-            log("ERROR: --no-launch set but nothing is listening on port %d."
-                % args.port)
-            return 1
-        else:
-            chrome_path = find_chrome()
-            if not chrome_path:
-                log("ERROR: Could not find a Chrome executable on this system.")
-                return 1
-            if args.force_restart and already:
-                log("--force-restart: replacing the running debug instance with a fresh one.")
-            elif chrome_running():
-                log("Chrome is running WITHOUT a debug port — killing it and relaunching "
-                    "with --remote-debugging-port=%d." % args.port)
-            else:
-                log("No Chrome running — launching with --remote-debugging-port=%d." % args.port)
-            kill_chrome()
-            chrome_proc = launch_chrome(chrome_path, args.port, args.user_data_dir)
+    if args.persist:
+        return run_persistent(args, rules, regulate, stop)
+    return run_once(args, rules, regulate, stop)
 
+
+def _seize_chrome(args, first=True):
+    """Make Chrome the debug-enabled instance. VERIFY the debug port first: if Chrome is
+    already debugging there, attach (don't disturb it); otherwise relaunch Chrome with the
+    port. Returns the launched Popen (or None if we attached). Raises RuntimeError on failure."""
+    already = is_devtools_up(args.port)
+    if already and not (first and args.force_restart):
+        log("Verified: Chrome is already debugging on port %d (%s) — attaching, not restarting."
+            % (args.port, already.get("Browser", "?")))
+        return None
+    if args.no_launch:
+        raise RuntimeError("--no-launch set but nothing is listening on port %d." % args.port)
+    chrome_path = find_chrome()
+    if not chrome_path:
+        raise RuntimeError("Could not find a Chrome executable on this system.")
+    if first and args.force_restart and already:
+        log("--force-restart: replacing the running debug instance with a fresh one.")
+    elif chrome_running():
+        log("Chrome is running WITHOUT a debug port — killing it and relaunching "
+            "with --remote-debugging-port=%d." % args.port)
+    else:
+        log("No Chrome running — launching with --remote-debugging-port=%d." % args.port)
+    kill_chrome()
+    return launch_chrome(chrome_path, args.port, args.user_data_dir)
+
+
+def run_once(args, rules, regulate, stop):
+    """Seize Chrome once, regulate until it closes, then exit (the original behavior)."""
+    chrome_proc = None
+    try:
+        chrome_proc = _seize_chrome(args, first=True)
         info = wait_for_devtools(args.port)
         if regulate:
             run_browser(args, info, rules, stop)
         else:
             run_single(args, stop)
-
     except RuntimeError as e:
         log("ERROR: %s" % e)
         return 1
@@ -665,7 +724,51 @@ def main():
                 chrome_proc.terminate()
             except Exception:
                 pass
+    return 0
 
+
+def _sleep_interruptible(seconds, stop):
+    for _ in range(int(seconds)):
+        if stop["flag"]:
+            return
+        time.sleep(1)
+
+
+def run_persistent(args, rules, regulate, stop):
+    """Always-on enforcement: keep Chrome under regulation. Relaunch the regulated instance
+    whenever it closes (run_browser returns on close); while it runs, run_browser also kills
+    any Chrome that isn't the regulated instance. So the rules can't be escaped by closing the
+    debug Chrome and opening a normal one, or by opening a second window alongside it."""
+    log("Persistent enforcement ON — Chrome will be kept under regulation (Ctrl+C to stop).")
+    first = True
+    while not stop["flag"]:
+        chrome_proc = None
+        try:
+            chrome_proc = _seize_chrome(args, first=first)
+            first = False
+            info = wait_for_devtools(args.port)
+            if regulate:
+                run_browser(args, info, rules, stop)
+            else:
+                run_single(args, stop)
+        except RuntimeError as e:
+            log("Could not seize Chrome (%s) — retrying in 5s." % e)
+            if chrome_proc:
+                try: chrome_proc.terminate()
+                except Exception: pass
+            _sleep_interruptible(5, stop)
+            continue
+        except Exception as e:
+            log("Session ended: %s" % e)
+        finally:
+            if chrome_proc:
+                try: chrome_proc.terminate()
+                except Exception: pass
+        if stop["flag"]:
+            break
+        log("Chrome is gone — re-seizing in 2s (always-on enforcement).")
+        _sleep_interruptible(2, stop)
+    log("Persistent enforcement stopped.")
     return 0
 
 

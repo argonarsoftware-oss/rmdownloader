@@ -105,7 +105,8 @@ define('CDP_PORT', 9222);</pre></div>
     <tr><td><b>▶ Start</b></td><td>Launches <code class="inline">chnav.exe</code>. It <b>verifies the debug port first</b>: if Chrome is already debugging it attaches; otherwise it kills the running Chrome and relaunches it with debugging (you can't add the port to a live Chrome).</td></tr>
     <tr><td><b>■ Stop / ⟳ Restart</b></td><td>Stops / restarts the monitor.</td></tr>
     <tr><td><b>requests</b></td><td>Also log every request URL (<code class="inline">DOC</code>/<code class="inline">req</code>).</td></tr>
-    <tr><td><b>📡 Feed</b></td><td>Live tail: <code class="inline">NAV</code>/<code class="inline">SPA</code> navigations and <code class="inline">BLOCK</code>/<code class="inline">WARN</code>/<code class="inline">REPLACE</code> rule hits, newest first. Filter + auto-refresh.</td></tr>
+    <tr><td><b>🔒 enforce</b></td><td><b>Always-on:</b> re-seizes Chrome if it's closed and kills any Chrome that isn't the regulated instance, so the rules can't be escaped by closing it or opening a second window. (Chrome only — other browsers need OS policy.)</td></tr>
+    <tr><td><b>📡 Feed</b></td><td>Live tail: <code class="inline">NAV</code>/<code class="inline">SPA</code> navigations and <code class="inline">BLOCK</code>/<code class="inline">WARN</code>/<code class="inline">REPLACE</code>/<code class="inline">REDIRECT</code> rule hits, newest first. Filter + auto-refresh.</td></tr>
   </table>
 
   <h2><span class="n">5</span> Site rules — block, warn, replace</h2>
@@ -116,7 +117,8 @@ define('CDP_PORT', 9222);</pre></div>
     <tr><th>Action</th><th>Result</th></tr>
     <tr><td><b>Block</b></td><td>A 🚫 <b>warning page</b> replaces the site (the real load/redirect is stopped).</td></tr>
     <tr><td><b>Warn</b></td><td>A ⚠️ page with <b>your custom message</b>.</td></tr>
-    <tr><td><b>Replace with</b></td><td>Serves another site's page <b>under the original address</b> (e.g. <code class="inline">facebook.com → https://www.youtube.com/</code>): the URL bar stays, the content is the other site.</td></tr>
+    <tr><td><b>Replace with</b></td><td>Serves another site's page <b>under the original address</b> (URL bar stays). Note: the target's root-relative images/assets can break across origins.</td></tr>
+    <tr><td><b>Redirect to</b></td><td>Sends the tab to another site — the <b>URL actually changes</b> (e.g. gambling → <code class="inline">https://phkarera.com/</code>). Same-origin, so it renders cleanly. Best for "send this traffic elsewhere".</td></tr>
   </table>
   <p class="muted">Saved <code class="inline">blt.txt</code> format (you can also edit it by hand):</p>
   <div class="code"><button class="copy">Copy</button><pre>facebook.com        replace https://www.youtube.com/

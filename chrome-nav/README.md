@@ -27,7 +27,8 @@ Pass a rules file (the dashboard saves it as `blt.txt` next to the exe). One rul
 *.<domain>          # wildcard
 <domain> block
 <domain> warn  <message...>
-<domain> replace <url>
+<domain> replace <url>      # serve <url>'s page, original URL stays (cross-origin caveat)
+<domain> redirect <url>     # URL actually changes to <url> (same-origin, renders cleanly)
 ```
 Example:
 ```
@@ -38,9 +39,16 @@ news.example   warn  Back to work please
 - **block / warn** are enforced on `Page.frameNavigated` by navigating the tab to a `data:` warning
   page — a real navigation that **stops the in-flight load/redirect** (so a 302 can't win).
 - **replace** keeps the original URL: the tab is re-navigated so the now-active `Fetch` domain catches
-  the reload and serves the replacement response. *(Live script-driven sites only half-render when
-  replaced — cross-origin/CSP; a static page is faithful.)*
+  the reload and serves the replacement response. *(Cross-origin caveat: the target's root-relative assets
+  resolve against the spoofed origin and 404 — images can break. Prefer `redirect` to send traffic elsewhere.)*
+- **redirect** changes the URL to the target (`Page.navigate`), so it renders same-origin and cleanly.
 - `--block-page <file>` overrides the warning HTML (`{{ICON}}/{{TITLE}}/{{DOMAIN}}/{{MESSAGE}}` tokens).
+
+## Always-on enforcement — `--persist`
+Keeps Chrome under regulation so the rules can't be escaped: re-seizes (relaunches) the regulated instance
+whenever Chrome is closed, and kills any Chrome that isn't the regulated one (identified by the process that
+owns the debug port). Closes the "close the debug Chrome and open a normal one / open a second window"
+bypass. Chrome only — other browsers need OS policy.
 
 ## Gotchas (load-bearing)
 - Chrome 111+ rejects the DevTools websocket with **HTTP 403** unless `--remote-allow-origins` is
@@ -62,7 +70,8 @@ py chrome_nav_monitor.py [--requests]                 # monitor only
 py chrome_nav_monitor.py --block blt.txt              # monitor + regulate
 ```
 CLI: `--port` (9222), `--user-data-dir` (`<tmp>/chrome-cdp-monitor`), `--requests`, `--block FILE`,
-`--block-page FILE`, `--all-tabs` (browser-level even without rules), `--no-launch`, `--force-restart`.
+`--block-page FILE`, `--all-tabs` (browser-level even without rules), `--persist` (always-on enforcement),
+`--no-launch`, `--force-restart`.
 With `--block` (or `--all-tabs`) it runs browser-level (all tabs); without, it's a single-tab passive monitor.
 
 ## Build a single-file exe (like dnl.exe)
