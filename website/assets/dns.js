@@ -185,7 +185,7 @@ function loadStats() {
         var shown = names.slice(0, 8).join(', ');
         if (names.length > 8) shown += ', +' + (names.length - 8) + ' more';
         alertEl.className = 'alert warn';
-        alertEl.innerHTML = '🎲 <b>Gambling-related activity detected</b> — ' + g.count +
+        alertEl.innerHTML = '🎲 <b>GL related activity</b> — ' + g.count +
           ' site(s), ' + (g.visits || 0).toLocaleString() + ' visits: ' + shown;
         alertEl.hidden = false;
       } else {
@@ -198,7 +198,7 @@ function loadStats() {
     for (var i = 0; i < top.length; i++) {
       var dom = top[i][0], hits = top[i][1], gambling = top[i][2];
       var pct = max ? Math.round(hits * 100 / max) : 0;
-      var tag = gambling ? ' <span class="gtag">🎲 gambling</span>' : '';
+      var tag = gambling ? ' <span class="gtag">🎲 GL</span>' : '';
       rows += '<tr' + (gambling ? ' class="g-row"' : '') + '><td class="l-rank">' + (i + 1) + '</td>' +
         '<td><span class="bar" style="width:' + pct + '%"></span><span class="bar-label">' + esc(dom) + tag + '</span></td>' +
         '<td class="l-hits">' + hits.toLocaleString() + '</td></tr>';
