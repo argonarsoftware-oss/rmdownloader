@@ -437,6 +437,26 @@ def host_of(url):
         return ""
 
 
+def inject_base(html_bytes, base_url):
+    """Insert <base href="base_url"> after <head> so the replacement page's relative AND
+    root-relative assets (e.g. /assets/x.jpg) resolve against the TARGET origin instead of
+    the spoofed address-bar origin — fixing images/CSS/JS that would otherwise 404. The URL
+    bar still shows the original (spoofed) address."""
+    try:
+        html = html_bytes.decode("utf-8", "replace")
+    except Exception:
+        return html_bytes
+    tag = '<base href="%s">' % base_url
+    low = html.lower()
+    i = low.find("<head")
+    if i != -1:
+        j = html.find(">", i)
+        html = (html[:j + 1] + tag + html[j + 1:]) if j != -1 else (tag + html)
+    else:
+        html = tag + html
+    return html.encode("utf-8")
+
+
 def handle_fetch(client, session_id, params, rules, args):
     """Fetch path — used for the 'replace' spoof (serve another site's response under the
     original URL). Block/warn are enforced in enforce_catchup() on frameNavigated, because
@@ -464,7 +484,10 @@ def handle_fetch(client, session_id, params, rules, args):
     rep = rules.replacement(rule["arg"])
     if rep:
         log("REPLACE   %s -> %s" % (url, rule["arg"]))
-        fulfill(rep[0], rep[1])
+        body = rep[0]
+        if "html" in (rep[1] or "").lower():
+            body = inject_base(body, rule["arg"])   # so the target's assets resolve cross-origin
+        fulfill(body, rep[1])
     else:
         log("REPLACE   %s -> %s (fetch failed)" % (url, rule["arg"]))
         fulfill(rules.warning_html(host_of(url), "&#9888;&#65039;", "Replacement unavailable",

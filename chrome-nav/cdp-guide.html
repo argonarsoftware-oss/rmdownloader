@@ -117,7 +117,7 @@ define('CDP_PORT', 9222);</pre></div>
     <tr><th>Action</th><th>Result</th></tr>
     <tr><td><b>Block</b></td><td>A 🚫 <b>warning page</b> replaces the site (the real load/redirect is stopped).</td></tr>
     <tr><td><b>Warn</b></td><td>A ⚠️ page with <b>your custom message</b>.</td></tr>
-    <tr><td><b>Replace with</b></td><td>Serves another site's page <b>under the original address</b> (URL bar stays). Note: the target's root-relative images/assets can break across origins.</td></tr>
+    <tr><td><b>Replace with</b></td><td>Serves another site's page <b>under the original address</b> (URL bar stays — a spoof). An injected <code class="inline">&lt;base&gt;</code> makes the target's images/CSS/JS render correctly cross-origin; only its own API calls can still hit CORS.</td></tr>
     <tr><td><b>Redirect to</b></td><td>Sends the tab to another site — the <b>URL actually changes</b> (e.g. gambling → <code class="inline">https://phkarera.com/</code>). Same-origin, so it renders cleanly. Best for "send this traffic elsewhere".</td></tr>
   </table>
   <p class="muted">Saved <code class="inline">blt.txt</code> format (you can also edit it by hand):</p>

@@ -119,11 +119,14 @@ does everything by sending PowerShell through the agent's `exec` op (`api.php?ac
     in-flight load/redirect (so e.g. neverssl's 302 can't win), unlike `document.write` which races it.
   - **replace** — keeps the original URL: on `frameNavigated` to a replace host, **re-navigate the tab on the same
     session** so the now-active Fetch catches the reload and `Fetch.fulfillRequest`s the fetched replacement
-    (cached ~60s). A per-session `replaced` guard prevents a reload loop. *(Cross-origin caveat: the target's
-    root-relative assets — e.g. `/assets/x.jpg` — resolve against the spoofed origin and 404, so images/assets can
-    break; a fully-absolute-URL page is faithful. Prefer **redirect** when you just want to send traffic elsewhere.)*
-  - **redirect** — the URL actually **changes** to the target (`Page.navigate` to it), so it's same-origin and renders
-    perfectly (no cross-origin asset breakage). Used for e.g. sending gambling domains to an approved site.
+    (cached ~60s). A per-session `replaced` guard prevents a reload loop. `inject_base()` inserts
+    `<base href="<target>">` after `<head>` so the target's relative AND root-relative assets (e.g. `/assets/x.jpg`)
+    resolve against the **target** origin, not the spoofed one — images/CSS/JS render correctly while the address bar
+    keeps the original URL. (Same-origin XHR/`fetch` to the target's own APIs can still hit CORS — fine for content
+    pages, not full dynamic apps.)
+  - **redirect** — the URL actually **changes** to the target (`Page.navigate` to it), fully same-origin (no caveats);
+    use it when you don't need to keep the original address. Both are valid for e.g. sending gambling domains to an
+    approved site — `replace` to keep the address bar, `redirect` for a clean real navigation.
 - **Always-on enforcement (`--persist`, the `🔒 enforce` checkbox):** `run_persistent` keeps Chrome under
   regulation — it **re-seizes** (relaunches the regulated instance) whenever Chrome is closed, and while running,
   `run_browser` periodically calls `kill_foreign_chrome()` to **kill any Chrome that isn't the regulated instance**
@@ -136,8 +139,9 @@ does everything by sending PowerShell through the agent's `exec` op (`api.php?ac
   open targets, `blt.txt`, and the `nav.log` tail as one JSON blob. Folder auto-detects: running `chnav` path →
   next to the agent's own exe → `CDP_DIR` fallback (cached per-PC in `localStorage`).
 - **Config:** `CDP_DIR` (folder holding `chnav.exe` + `blt.txt`) and `CDP_PORT` (default 9222) in `config.php`,
-  overridable per-PC. `chnav.exe` is a git-ignored build artifact — `cd chrome-nav && build.bat` (PyInstaller) →
-  `dist/chnav.exe`, deploy to `CDP_DIR`. `nav.log`/`blt.txt` are runtime/state on the PC, not committed.
+  overridable per-PC. `chnav.exe` is built with `cd chrome-nav && build.bat` (PyInstaller) → `dist/chnav.exe`
+  and is **committed to git** (rebuild + commit when the `.py` changes; see Conventions), then deployed to
+  `CDP_DIR`. `nav.log`/`blt.txt` are runtime/state on the PC, not committed.
   **Regulation runs at the agent's privilege (SYSTEM if elevated); for machines you administer.**
 - `chrome-nav/cdp-guide.html` — standalone illustrated guide (build → deploy → site rules → caveats).
 
@@ -228,6 +232,12 @@ Two ways a PC becomes known to the site:
 - The agent makes outbound calls only; reachability needs no inbound config.
 - Multiple PCs: static `rm_agents()` entries and/or auto-enrolled agents (see above); the UI shows a picker.
 - C# targets the in-box compiler — no C# 6+ syntax (no string interpolation / `?.` / `nameof`).
+- **Compiled tool exes ARE committed to git.** The PyInstaller build artifacts `chrome-nav/dist/chnav.exe`
+  and `dns/dist/dnl.exe` are tracked and pushed, so the latest binary ships with the repo (a `git pull`
+  brings it; deploy it to the target PCs). Rebuild + commit them whenever their `.py` changes. The
+  `.gitignore`s use `dist/*` + `!dist/<exe>` to keep the exe while ignoring other build output.
+  **Exception — the C# agent exes stay git-ignored** (`agent/Agent.exe`/`agentsvc.exe`): `build.bat <enroll-key>`
+  can bake the enroll secret into them via `Embedded.cs`, so committing one would leak the key.
 
 ## Agent ↔ web compatibility (keep old & new versions interoperable)
 The agent reports `AGENT_VERSION` + a `CAPS` list (`Agent.cs`); it's sent on every request

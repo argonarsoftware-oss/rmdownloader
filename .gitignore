@@ -20,9 +20,9 @@ website/data/*.json
 # Local test scratch
 _agenttest/
 
-# PyInstaller build output for the Python subprojects (build exes locally; commit the .py)
-# (each subproject also has its own .gitignore — chrome-nav/, dns/)
-dist/
+# PyInstaller build output for the Python subprojects. Each subproject's own .gitignore commits
+# its dist/<exe> and ignores the rest (see CLAUDE.md "Compiled tool exes ARE committed"), so do
+# NOT blanket-ignore dist/ here — that would block re-including the committed exe.
 build_pyi/
 __pycache__/
 

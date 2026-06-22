@@ -1,8 +1,9 @@
-# build output — keep the source, not the artifacts
-dist/
+# build output — keep the source AND the committed exe, ignore the rest
 build/
 build_pyi/
 *.spec
-chnav.exe
 __pycache__/
 *.pyc
+# Ship the compiled tool exe (see CLAUDE.md "Compiled tool exes ARE committed"):
+dist/*
+!dist/chnav.exe

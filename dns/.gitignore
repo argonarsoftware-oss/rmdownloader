@@ -1,8 +1,10 @@
-# build output / runtime files — keep the source, not the artifacts
-dist/
+# build output / runtime files — keep the source AND the committed exe
 build/
 __pycache__/
 *.pyc
+# Ship the compiled tool exe (see CLAUDE.md "Compiled tool exes ARE committed"):
+dist/*
+!dist/dnl.exe
 # runtime config + log (auto-created next to the exe on first run)
 records.txt
 blocklist.txt

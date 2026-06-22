@@ -69,10 +69,9 @@ $cdpPort = defined('CDP_PORT') ? CDP_PORT : 9222;
     </table>
     <div class="muted" style="font-size:12px;margin-top:8px">
       <b>Block</b> → warning page &nbsp;·&nbsp; <b>Warn</b> → your custom message &nbsp;·&nbsp;
-      <b>Replace with</b> → serve another site under the typed address, <i>URL stays</i> (e.g. <code>facebook.com → youtube.com</code>) &nbsp;·&nbsp;
+      <b>Replace with</b> → serve another site under the typed address, <i>URL stays</i> (e.g. <code>facebook.com → youtube.com</code>); assets render via an injected <code>&lt;base&gt;</code> &nbsp;·&nbsp;
       <b>Redirect to</b> → send to another site, <i>URL changes</i> (e.g. gambling → <code>https://phkarera.com/</code>).
-      Saved as <code>blt.txt</code>; hot-reloaded live. <i>Replace can break a site's images/assets across origins — prefer
-      Redirect when you just want to send traffic elsewhere.</i>
+      Saved as <code>blt.txt</code>; hot-reloaded live. <i>Replace keeps the address bar (great for a spoof); Redirect is a clean real navigation. Replace can still hit CORS for a target's own API calls — fine for content pages.</i>
     </div>
   </section>
 
