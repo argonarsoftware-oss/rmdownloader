@@ -95,6 +95,33 @@ so it survives pulls).
 
 > There is a step-by-step illustrated version in **`vps-setup-guide.html`** (open it in a browser).
 
+### Auto-deploy on push (GitHub webhook)
+
+`website/webhook-deploy.php` auto-updates the VPS when you push — but **only for commits whose message
+contains `[deploy]`** (other pushes are skipped), so you control exactly when the live site changes.
+
+```bash
+# one-time server prep: let Apache's user run git in the repo
+sudo chown -R www-data:www-data /var/www/rmdownloader
+sudo -u www-data git config --global --add safe.directory /var/www/rmdownloader
+```
+
+Set a secret in `config.php`:
+
+```php
+define('WEBHOOK_SECRET', 'a-long-random-value');   // '' disables the webhook
+```
+
+Then in **GitHub → repo → Settings → Webhooks → Add webhook**:
+* **Payload URL:** `https://dos.argonar.co/webhook-deploy.php`
+* **Content type:** `application/json`
+* **Secret:** the same value as `WEBHOOK_SECRET`
+* **Events:** Just the `push` event
+
+Now `git commit -m "fix: thing [deploy]" && git push` runs `git fetch + reset --hard origin/main` on the
+VPS. `config.php` is git-ignored so the hard reset never touches your secrets. Activity is logged to
+`website/data/deploy.log`.
+
 ---
 
 ## Multiple client PCs

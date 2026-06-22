@@ -36,6 +36,15 @@ define('SESSION_TIMEOUT', 1800);     // idle timeout, seconds
 //   e.g.  GET api.php?action=list&agent=pc1&path=C:\&key=<API_KEY>
 define('API_KEY', '');
 
+// ---- GitHub auto-deploy webhook (website/webhook-deploy.php) ----
+// Shared secret that must match the GitHub webhook's "Secret" field. The webhook only
+// runs `git fetch + reset --hard origin/main` when a pushed commit message contains [deploy]
+// AND the request signature (X-Hub-Signature-256) verifies against this value.
+// Leave '' to DISABLE the webhook entirely (all requests are rejected). Use a long random value.
+define('WEBHOOK_SECRET', '');
+// Optional override of the git repo root the webhook deploys (defaults to the parent of website/).
+// define('DEPLOY_WEB_ROOT', '/var/www/rmdownloader');
+
 // ---- Remote terminal ----
 // Allow running shell commands on the agent PC from the web "Terminal" panel.
 // Commands run as whatever user the agent runs as (SYSTEM if auto-started elevated).

@@ -15,22 +15,38 @@ or tunnel is needed — you just run the agent.
     new build doesn't check in), and keepalive-`ping`s the server during a swap so the PC stays online.
     Tiny/stable; rarely needs updating itself.
   - `build.bat` — compiles BOTH with `csc.exe` (`Agent.exe` needs `/r:System.Web.Extensions.dll`).
+    Optionally bakes `server` + enroll key into `Embedded.cs` for a zero-config single exe:
+    `build.bat <enroll-key> [server]`.
   - `agent.conf.sample` — per-machine config: `server`, `token`, `root`. Copied to `agent.conf`.
   - `install-startup.ps1` / `uninstall-startup.ps1` — Task Scheduler boot auto-start (SYSTEM).
+  - `rollout-update.ps1` — canary-then-fleet remote worker update driver (calls `api.php?action=update`
+    with the new `Agent.exe` base64; canary first, confirm reconnect, then the rest).
+  - `update-guide.html` — standalone illustrated worker-update walkthrough (paste-safe one-line commands).
 - `website/` — PHP app (XAMPP locally / Apache on the VPS).
-  - `index.php`, `login.php`, `logout.php` — pages.
-  - `agent.php` — agent-facing endpoint: `?action=poll` (long-poll, returns queued commands)
-    and `?action=result`. Auth by per-PC token (`X-Agent-Token`); no session.
+  - `index.php`, `login.php`, `logout.php` — pages. `index.php` is the file manager (breadcrumb, drives,
+    terminal + editor modals, upload).
+  - `dns.php` + `assets/dns.js` — the **DNS Manager** page (see DNS subsystem below). Has NO dedicated
+    PHP backend: it drives the agent entirely through the existing `exec` op via `api.php`.
+  - `agent.php` — agent-facing endpoint: `?action=poll` (long-poll, returns queued commands),
+    `?action=result`, and `?action=ping` (keepalive: marks online without claiming commands, used by
+    the supervisor during a swap). Auth by per-PC token OR shared `ENROLL_KEY` (`X-Agent-Token`); no session.
   - `api.php` — browser/automation-facing: enqueues a command for the selected PC and waits for
-    the result. Auth via session login OR `API_KEY` (`?key=` / `X-Api-Key`).
-  - `lib.php` — session/auth (`api_authorized`), agent lookup, and the file-based queue
-    (`enqueue_command`, `claim_commands`, `store_result`, `fetch_result`, `is_online`).
-  - `config.sample.php` — copied to `config.php`; holds `rm_agents()`, `WEB_PASSWORD`, `API_KEY`,
-    `DATA_DIR`.
-  - `data/` — runtime command queue (`<agentId>/cmd|res/*.json`, `online`). `.htaccess` denies web access.
-  - `assets/` — `app.js`, `style.css`.
+    the result. Auth via session login OR `API_KEY` (`?key=` / `X-Api-Key`). Actions: `agents`,
+    `removeagent`, `info`, `list`, `read`, `mkdir`, `delete`, `rename`, `save`, `exec`, `update`,
+    `upload`, `download`.
+  - `lib.php` — session/auth (`api_authorized`), agent lookup, the file-based queue
+    (`enqueue_command`, `claim_commands`, `store_result`, `fetch_result`, `is_online`), and the
+    auto-enroll registry (`load_registry`, `register_agent`, `unregister_agent` → `data/agents.json`).
+  - `config.sample.php` — copied to `config.php`; holds `ENROLL_KEY`, `rm_agents()`, `DATA_DIR`,
+    `WEB_PASSWORD`, `SESSION_TIMEOUT`, `API_KEY`, `ALLOW_EXEC`, `DNS_DIR`, `DNS_TASK`.
+  - `webhook-deploy.php` — GitHub push webhook for auto-deploy on the VPS (see Auto-deploy below).
+  - `data/` — runtime command queue (`<agentId>/cmd|res/*.json`, `online`, `version`) + `agents.json`
+    (auto-enroll registry) + `deploy.log` (webhook log). `.htaccess` denies web access.
+  - `assets/` — `app.js` (file manager), `dns.js` (DNS manager), `style.css`.
 - `deploy/apache-vhost.conf` — VPS vhost (`dos.argonar.co`).
 - `vps-setup-guide.html` — standalone illustrated setup guide (local file).
+- `dns/` — the **TinyDNS** server managed by the DNS page (see DNS subsystem below). Standalone Python,
+  shipped/run on the DNS machine as `dnl.exe`; not part of the agent build.
 
 ## chrome_nav_monitor.py — standalone tool (NOT part of the agent)
 A self-contained Python utility at the repo root that prints Chrome's navigation in real time via
@@ -63,15 +79,64 @@ is not in `build.bat`, and never touches the queue/`data/`. Don't merge it into 
   Handle `Target.targetDestroyed` to drop closed tabs. Keep the current single-tab path as the default
   and gate the new behavior behind a flag (e.g. `--all-tabs`) so old usage is unchanged.
 
+## DNS subsystem (TinyDNS) — `dns/` + `website/dns.php` + `assets/dns.js`
+A second feature reusing the same agent: a network-wide DNS server on a chosen PC, managed from the
+browser. Three parts:
+- **`dns/dns_server.py` → `dnl.exe`** — a tiny, **stdlib-only** DNS server (no deps). Serves a
+  hosts-style `records.txt`, blocks `blocklist.txt` domains (answered `0.0.0.0`), forwards everything
+  else to upstream resolvers (default CleanBrowsing `185.228.168.10/11`, failover order), and logs every
+  query to `queries.log`. All three files **hot-reload** (mtime poll, ~2s) — edit + save, no restart.
+  - **records.txt** targets may be an **IP** (classic hosts mapping) or **another domain** (redirect: the
+    server resolves the target via upstream and returns *its* IP for the queried name). `*.` wildcards on
+    the left. For any name with a record, `AAAA` is answered NODATA so the IPv4 mapping/redirect wins in
+    browsers (avoids leaking the real IPv6). A forward-result cache (TTL-respecting, capped) sits in front
+    of upstream.
+  - Built with `dns/build.bat` (PyInstaller, windowless single file). On first run **as admin** it
+    self-registers a hidden SYSTEM boot task **`TinyDNS`** pointing at itself; `dns_server.py --uninstall`
+    removes it. CLI: `--host/--port/--records/--blocklist/--log/--no-log/--no-install/--uninstall/--upstream`.
+  - **Provenance:** the original source was lost (never pushed). `dns_server.py` was **reconstructed from
+    the PyInstaller bytecode inside `dnl.exe`** and is faithful to the file formats `dns.php` depends on
+    (TSV query log; `BLOCKED`/`LOCAL`/`FWD`/`NXDOMAIN` dispositions; the `TinyDNS` task + boot XML). Raw
+    recovered bytecode kept locally as `dns_server.recovered.pyc` (git-ignored). A few log strings/comments
+    may differ cosmetically from the original.
+  - `dns/recover-config.html` / `recover-config.ps1`, `check-selfinstall.html` — standalone helper docs/scripts.
+- **`website/dns.php` + `assets/dns.js`** — the DNS Manager UI. **Key design point:** it has no PHP
+  backend of its own — it manages everything by sending **PowerShell/cmd through the agent's `exec` op**
+  (`api.php?action=exec`). One batched PowerShell round-trip (`buildLoadScript`) returns the DNS folder,
+  the machine's IPs, the `TinyDNS` task status, `blocklist.txt`/`records.txt` contents, and the
+  `queries.log` tail as a single compact JSON blob. Start/Stop/Restart drive `schtasks /run|/end` on the
+  `TinyDNS` task; Save writes the files (hot-reloaded live); Test runs `nslookup … 127.0.0.1`. The DNS
+  folder auto-detects from the task's exe path if not overridden (cached per-PC in `localStorage`).
+- **Config:** `DNS_DIR` (default folder holding `records.txt`/`blocklist.txt`/`dnl.exe`) and `DNS_TASK`
+  (`TinyDNS`) in `config.php`; both overridable per-PC in the UI. (Note: the `config.sample.php` comment
+  says `dnsserver.exe`, but the built exe is actually `dnl.exe`.)
+- **Query log is a flat TSV file, not a database.** `dnl.exe` *appends* one tab-separated line per query
+  to `queries.log` (`time, client IP, domain, type, disposition`). It self-rotates: once the file passes
+  5 MB it's renamed to `queries.log.1` (one generation kept) and a fresh file started — so old entries
+  age out by rotation, they are never "replaced by newest" in place. `dns.js` reads only the **last 400
+  lines** (`Get-Content -Tail 400`) and shows them newest-first; "Clear" runs `Clear-Content` to empty
+  the file. There is no DB and no server-side dedup/aggregation.
+
 ## Queue protocol
 Browser/API → `enqueue_command` writes `data/<id>/cmd/<cmdId>.json` → agent long-poll claims it →
 agent runs it → posts result → `store_result` writes `data/<id>/res/<cmdId>.json` → `fetch_result`
 (api.php) returns it. Files are written via temp+rename. Download/upload move bytes as base64.
 
+## Auto-enroll (zero-touch onboarding)
+Two ways a PC becomes known to the site:
+- **Static** — a `name`+`token` entry per machine in `rm_agents()` (`config.php`). Pinned, can't be
+  removed from the UI.
+- **Auto-enroll** — set one shared `ENROLL_KEY` in `config.php` and the same value as the agent's
+  `token`. Any agent presenting that key registers itself by **machine id** (MachineName + MachineGuid,
+  sent as `X-Agent-Id`/`X-Agent-Name`) into the `data/agents.json` registry and appears in the picker —
+  no per-PC config and no editing `config.php` again. `all_agents()` merges both sources. Only
+  auto-enrolled PCs can be removed via `api.php?action=removeagent` (which also deletes their queue dir).
+  Security: only a holder of `ENROLL_KEY` can enroll, and an agent can only expose its OWN machine.
+
 ## Conventions
 - Secrets live only in `config.php` / `agent.conf` (git-ignored). Commit `*.sample` instead.
 - The agent makes outbound calls only; reachability needs no inbound config.
-- Multiple PCs: one `name`+`token` entry per machine in `rm_agents()`; the UI shows a picker.
+- Multiple PCs: static `rm_agents()` entries and/or auto-enrolled agents (see above); the UI shows a picker.
 - C# targets the in-box compiler — no C# 6+ syntax (no string interpolation / `?.` / `nameof`).
 
 ## Agent ↔ web compatibility (keep old & new versions interoperable)
@@ -104,6 +169,23 @@ manual recipe below. The supervisor itself changes rarely; updating it uses the 
   (+ new `Agent.exe`) next to the current exe, then from a *detached* one-shot scheduled task:
   `schtasks /end /tn rmdownloaderAgent` → re-create the task to run `agentsvc.exe` → `schtasks /run`.
   (Detached so ending the agent doesn't kill the updater.)
+
+## Auto-deploy (GitHub webhook) — `website/webhook-deploy.php`
+A push webhook that auto-updates the VPS, modeled on the Argonar Construction one. GitHub POSTs every
+push to `https://dos.argonar.co/webhook-deploy.php`; the handler **only deploys when a commit message
+contains `[deploy]`** (and the push is to `main`, and the `X-Hub-Signature-256` HMAC verifies against
+`WEBHOOK_SECRET`). On a match it runs `git fetch origin main` + `git reset --hard origin/main`, then
+restores `www-data` ownership and re-`chmod`s `website/data`. Plain pushes (no `[deploy]`) are logged and
+skipped, so not every commit redeploys.
+- **Layout note (differs from Argonar):** Apache's docroot is `website/`, but the **git repo root is its
+  parent** `/var/www/rmdownloader`. So the PHP file lives in `website/` (to be served) while git targets
+  `dirname(__DIR__)`. Override with `DEPLOY_WEB_ROOT` in `config.php` if the repo lives elsewhere.
+- **Secret** is `WEBHOOK_SECRET` in `config.php` (git-ignored, survives the hard reset). Empty ⇒ webhook
+  disabled (all requests rejected). `config.php`/`agent.conf` are git-ignored so `reset --hard` never
+  clobbers local secrets. Log: `website/data/deploy.log` (denied by `data/.htaccess`, git-ignored as `*.log`).
+- **One-time server prep:** `chown -R www-data:www-data /var/www/rmdownloader` and
+  `sudo -u www-data git config --global --add safe.directory /var/www/rmdownloader` so Apache's user can
+  run git. Then add the webhook in GitHub (push event, `application/json`, the same secret).
 
 ## Build / run
 - Agent: `cd agent && build.bat`, set `agent.conf`, run `Agent.exe` (auto-start via the PS1).
