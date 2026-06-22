@@ -108,6 +108,34 @@ function syncThenLoad() {
   return syncLog().then(function () { return loadLog(); });
 }
 
+// ---- top sites (permanent rollup; MySQL only) ----
+function loadStats() {
+  var tbody = document.getElementById('statRows');
+  if (!tbody) return;
+  var days = document.getElementById('statsRange').value;
+  var q = document.getElementById('statsFilter').value.trim();
+  dnsLog({ action: 'stats', days: days, q: q, limit: 50 }).then(function (d) {
+    if (!d || !d.ok) {
+      tbody.innerHTML = '<tr><td colspan="3" class="muted">' +
+        esc((d && d.db === false) ? 'Top sites need MySQL (not configured)' : ((d && d.error) || 'error')) + '</td></tr>';
+      document.getElementById('statsTotal').textContent = '';
+      return;
+    }
+    var top = d.top || [];
+    var max = top.length ? top[0][1] : 0;
+    var rows = '';
+    for (var i = 0; i < top.length; i++) {
+      var dom = top[i][0], hits = top[i][1];
+      var pct = max ? Math.round(hits * 100 / max) : 0;
+      rows += '<tr><td class="l-rank">' + (i + 1) + '</td>' +
+        '<td><span class="bar" style="width:' + pct + '%"></span><span class="bar-label">' + esc(dom) + '</span></td>' +
+        '<td class="l-hits">' + hits.toLocaleString() + '</td></tr>';
+    }
+    tbody.innerHTML = rows || '<tr><td colspan="3" class="muted">no data yet — let some queries roll up</td></tr>';
+    document.getElementById('statsTotal').textContent = (d.total || 0).toLocaleString() + ' visits';
+  });
+}
+
 // File-tail fallback — used only when MySQL isn't configured: read queries.log via the agent.
 function loadLogFile() {
   var tbody = document.getElementById('logRows');
@@ -247,7 +275,8 @@ function applyBundle(d) {
   document.getElementById('recText').value = j.rec || '';
   renderIps(j.ips || []);
   setStatus(j.status);
-  syncThenLoad();          // ingest new queries into the DB, then show history (file-tail if no DB)
+  // ingest new queries (+ roll up), show history, then refresh the top-sites stats
+  Promise.resolve(syncThenLoad()).then(loadStats);
   msg('');
 }
 
@@ -295,6 +324,12 @@ document.getElementById('logFilter').oninput = function () {
 };
 document.getElementById('logAuto').onchange = function () {
   if (this.checked) { autoTimer = setInterval(syncThenLoad, 5000); } else { clearInterval(autoTimer); autoTimer = null; }
+};
+document.getElementById('btnStatsRefresh').onclick = loadStats;
+document.getElementById('statsRange').onchange = loadStats;
+var statsFilterTimer = null;
+document.getElementById('statsFilter').oninput = function () {
+  clearTimeout(statsFilterTimer); statsFilterTimer = setTimeout(loadStats, 300);
 };
 
 // ---- boot ----

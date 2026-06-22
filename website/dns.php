@@ -64,7 +64,27 @@ $dnsTask = defined('DNS_TASK') ? DNS_TASK : 'TinyDNS';
   </section>
 
   <section class="dns-card">
-    <div class="dns-head">📜 Query log <span class="muted">what every PC looked up (newest first)</span>
+    <div class="dns-head">📊 Top sites <span class="muted">most-visited domains on this network (kept forever)</span>
+      <select id="statsRange" class="agent-select" style="margin-left:8px">
+        <option value="1">Today</option>
+        <option value="7" selected>Last 7 days</option>
+        <option value="30">Last 30 days</option>
+        <option value="0">All time</option>
+      </select>
+      <input type="text" id="statsFilter" placeholder="filter domain…" style="margin-left:8px;width:200px">
+      <span class="spacer"></span>
+      <span id="statsTotal" class="muted" style="margin-right:8px"></span>
+      <button class="btn" id="btnStatsRefresh">Refresh</button></div>
+    <div class="log-wrap">
+      <table class="loglist statlist">
+        <thead><tr><th class="l-rank">#</th><th>Domain</th><th class="l-hits">Visits</th></tr></thead>
+        <tbody id="statRows"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="dns-card">
+    <div class="dns-head">📜 Query log <span class="muted">recent raw lookups (newest first)</span>
       <input type="text" id="logFilter" placeholder="filter domain / IP…" style="margin-left:8px;width:220px">
       <span class="spacer"></span>
       <label class="muted" style="margin-right:8px"><input type="checkbox" id="logAuto"> auto-refresh</label>

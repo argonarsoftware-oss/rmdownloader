@@ -14,8 +14,11 @@ require_once __DIR__ . '/../dns-sync-core.php';
 if (!db()) { fwrite(STDERR, "database not configured (set DB_* in config.php)\n"); exit(1); }
 
 $ts = date('Y-m-d H:i:s');
+$retention = defined('DNS_RAW_RETENTION_DAYS') ? (int)DNS_RAW_RETENTION_DAYS : 7;
 foreach (all_agents() as $id => $a) {
     if (!is_online($id)) continue;
-    $r = dns_sync_agent($id, '');
-    fwrite(STDOUT, "[$ts] $id: " . json_encode($r) . "\n");
+    $r = dns_sync_agent($id, '');          // ingest (shared read of the DNS box) + rollup
+    $pruned = 0;
+    try { $pruned = dns_prune_old(db(), $id, $retention); } catch (Exception $e) { }
+    fwrite(STDOUT, "[$ts] $id: " . json_encode($r) . " pruned=$pruned\n");
 }

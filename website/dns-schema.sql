@@ -43,3 +43,24 @@ CREATE TABLE IF NOT EXISTS dns_ingest_state (
   updated_at DATETIME        NOT NULL,
   PRIMARY KEY (agent_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Permanent rollup: network-wide visit counts per domain per day. Raw dns_queries rows
+-- get aggregated into this (hits += COUNT) then pruned, so this stays tiny forever and
+-- answers "what does this network visit most" over any date range.
+CREATE TABLE IF NOT EXISTS dns_stats_daily (
+  agent_id VARCHAR(120)    NOT NULL,
+  day      DATE            NOT NULL,
+  domain   VARCHAR(255)    NOT NULL,
+  hits     BIGINT UNSIGNED NOT NULL DEFAULT 0,
+  PRIMARY KEY (agent_id, day, domain),
+  KEY idx_agent_day (agent_id, day)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC;
+
+-- Per-agent rollup watermark: the highest dns_queries.id already folded into dns_stats_daily,
+-- so each raw row is counted exactly once and pruning never drops un-rolled rows.
+CREATE TABLE IF NOT EXISTS dns_rollup_state (
+  agent_id   VARCHAR(120)    NOT NULL,
+  rolled_id  BIGINT UNSIGNED NOT NULL DEFAULT 0,
+  updated_at DATETIME        NOT NULL,
+  PRIMARY KEY (agent_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

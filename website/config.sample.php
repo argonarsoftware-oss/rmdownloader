@@ -70,3 +70,9 @@ define('DB_PORT', 3306);
 define('DB_NAME', 'rmdownloader');
 define('DB_USER', 'rmdownloader');
 define('DB_PASS', '');
+
+// Raw query rows are rolled up into permanent per-day domain counts (dns_stats_daily), then
+// the raw detail older than this many days is pruned by cron/dns-sync.php. The "Top sites"
+// stats live forever; only the row-by-row detail ages out. Set 0 to delete raw immediately
+// after rollup, or a big number to keep more drill-down history.
+define('DNS_RAW_RETENTION_DAYS', 7);

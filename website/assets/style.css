@@ -119,3 +119,10 @@ tr:hover .row-act{visibility:visible}
 .toast.show{top:18px;opacity:1}
 .toast.ok{background:#173a23;border:1px solid #2ea043;color:#b7f0c4}
 .toast.err{background:#3a2125;border:1px solid var(--danger);color:#ffb4b4}
+
+/* DNS top-sites ranking */
+.statlist td{position:relative}
+.statlist .l-rank{width:36px;text-align:right;color:#8b949e}
+.statlist .l-hits{width:90px;text-align:right;font-variant-numeric:tabular-nums}
+.statlist .bar{position:absolute;left:0;top:3px;bottom:3px;background:rgba(88,166,255,.16);border-radius:3px;z-index:0}
+.statlist .bar-label{position:relative;z-index:1}

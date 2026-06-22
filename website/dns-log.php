@@ -57,16 +57,28 @@ try {
     }
 
     if ($action === 'stats') {
-        $st = $pdo->prepare('SELECT disposition, COUNT(*) c FROM dns_queries WHERE ' . $where . ' GROUP BY disposition');
-        $st->execute($args);
-        $byDisp = $st->fetchAll();
-        $st = $pdo->prepare('SELECT domain, COUNT(*) c FROM dns_queries WHERE ' . $where . ' GROUP BY domain ORDER BY c DESC LIMIT 20');
-        $st->execute($args);
-        $top = $st->fetchAll();
-        $st = $pdo->prepare('SELECT COUNT(*) c FROM dns_queries WHERE ' . $where);
-        $st->execute($args);
+        // Network-wide "top sites" from the permanent rollup (dns_stats_daily), any date range.
+        $days = isset($_REQUEST['days']) ? (int)$_REQUEST['days'] : 0;   // 0 = all time
+        $limit = isset($_REQUEST['limit']) ? (int)$_REQUEST['limit'] : 50;
+        if ($limit < 1) $limit = 1;
+        if ($limit > 500) $limit = 500;
+
+        $w = 'agent_id = ?';
+        $a = array($agent);
+        if ($q !== '') { $w .= ' AND domain LIKE ?'; $a[] = '%' . $q . '%'; }
+        if ($days > 0) { $w .= ' AND day >= (CURDATE() - INTERVAL ' . (int)$days . ' DAY)'; }
+
+        $st = $pdo->prepare('SELECT domain, SUM(hits) hits FROM dns_stats_daily WHERE ' . $w
+                          . ' GROUP BY domain ORDER BY hits DESC LIMIT ' . $limit);
+        $st->execute($a);
+        $top = array();
+        while ($row = $st->fetch()) $top[] = array($row['domain'], (int)$row['hits']);
+
+        $st = $pdo->prepare('SELECT COALESCE(SUM(hits),0) FROM dns_stats_daily WHERE ' . $w);
+        $st->execute($a);
         $total = (int)$st->fetchColumn();
-        echo json_encode(array('ok' => true, 'db' => true, 'total' => $total, 'by_disposition' => $byDisp, 'top_domains' => $top));
+
+        echo json_encode(array('ok' => true, 'db' => true, 'days' => $days, 'total' => $total, 'top' => $top));
         exit;
     }
 

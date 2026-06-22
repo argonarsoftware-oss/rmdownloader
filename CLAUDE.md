@@ -137,6 +137,14 @@ browser. Three parts:
   - **UI:** `dns.js` reads history from `dns-log.php` (server-side filter over ALL history, keyset
     "Load older" paging); "Clear" deletes the DB rows for that PC (the live file is untouched, so new
     queries re-accumulate). `db`-mode vs `file`-mode is auto-detected on first load.
+  - **Rollup + retention (permanent "Top sites", bounded raw):** raw `dns_queries` rows are aggregated
+    into `dns_stats_daily` (`agent_id, day, domain → hits`) by `dns_rollup()` — keyed by a per-agent id
+    watermark (`dns_rollup_state`) so each row counts once — then raw rows older than
+    `DNS_RAW_RETENTION_DAYS` (default 7) that are already rolled up get pruned by `dns_prune_old()` (run
+    from the cron). So the row-by-row detail ages out while the network-wide visit counts live forever and
+    stay tiny. `dns-log.php?action=stats&days=N` powers the **Top sites** card (`SUM(hits)` per domain over
+    a date range). Rollup is best-effort inside `dns_sync_agent` — a not-yet-migrated stats table can't
+    break ingest. **All rollup/prune/stats is pure VPS MySQL — zero extra interaction with `dnl.exe`.**
 
 ## Queue protocol
 Browser/API → `enqueue_command` writes `data/<id>/cmd/<cmdId>.json` → agent long-poll claims it →

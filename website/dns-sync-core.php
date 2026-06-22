@@ -59,6 +59,10 @@ function dns_sync_agent($id, $dirOverride) {
             if ($pdo->inTransaction()) $pdo->rollBack();
             return array('ok' => false, 'error' => 'insert: ' . $e->getMessage());
         }
+        // Roll new raw rows up into permanent per-day domain counts. Best-effort: a missing
+        // stats table (e.g. schema not migrated yet) must NOT break ingest.
+        try { dns_rollup($pdo, $id); } catch (Exception $e) { }
+
         return array('ok' => true, 'inserted' => $inserted, 'offset' => $newoff);
     } catch (Exception $e) {
         return array('ok' => false, 'error' => $e->getMessage());
@@ -66,6 +70,55 @@ function dns_sync_agent($id, $dirOverride) {
         $rel = $pdo->prepare('SELECT RELEASE_LOCK(?)');
         $rel->execute(array($lock));
     }
+}
+
+// Aggregate not-yet-rolled raw rows into dns_stats_daily (network-wide domain counts per day),
+// keyed by an id watermark so each raw row is counted exactly once. Returns rows folded in.
+function dns_rollup($pdo, $id) {
+    $rolled = 0;
+    $st = $pdo->prepare('SELECT rolled_id FROM dns_rollup_state WHERE agent_id = ?');
+    $st->execute(array($id));
+    $v = $st->fetchColumn();
+    if ($v !== false) $rolled = (int)$v;
+
+    $st = $pdo->prepare('SELECT MAX(id) FROM dns_queries WHERE agent_id = ?');
+    $st->execute(array($id));
+    $maxid = (int)$st->fetchColumn();
+    if ($maxid <= $rolled) return 0;
+
+    $pdo->beginTransaction();
+    try {
+        $agg = $pdo->prepare(
+            'INSERT INTO dns_stats_daily (agent_id, day, domain, hits)
+             SELECT agent_id, DATE(ts), domain, COUNT(*) FROM dns_queries
+             WHERE agent_id = ? AND id > ? AND id <= ?
+             GROUP BY agent_id, DATE(ts), domain
+             ON DUPLICATE KEY UPDATE hits = hits + VALUES(hits)');
+        $agg->execute(array($id, $rolled, $maxid));
+        $up = $pdo->prepare('INSERT INTO dns_rollup_state (agent_id, rolled_id, updated_at) VALUES (?,?,NOW())
+                             ON DUPLICATE KEY UPDATE rolled_id = VALUES(rolled_id), updated_at = NOW()');
+        $up->execute(array($id, $maxid));
+        $pdo->commit();
+    } catch (Exception $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        throw $e;
+    }
+    return $maxid - $rolled;
+}
+
+// Delete raw dns_queries rows older than $days that have ALREADY been rolled up (id <= watermark),
+// so the detail ages out while the stats stay forever. Returns rows deleted.
+function dns_prune_old($pdo, $id, $days) {
+    $days = (int)$days;
+    $rolled = 0;
+    $st = $pdo->prepare('SELECT rolled_id FROM dns_rollup_state WHERE agent_id = ?');
+    $st->execute(array($id));
+    $v = $st->fetchColumn();
+    if ($v !== false) $rolled = (int)$v;
+    if ($rolled <= 0) return 0;
+    $st = $pdo->prepare('DELETE FROM dns_queries WHERE agent_id = ? AND id <= ? AND ts < (NOW() - INTERVAL ' . $days . ' DAY)');
+    $st->execute(array($id, $rolled));
+    return $st->rowCount();
 }
 
 // Run a PowerShell command on the agent and return its result envelope (or null on timeout).
