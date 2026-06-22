@@ -139,7 +139,13 @@ $task=__TASK__
 $override=__OVERRIDE__
 $off=__OFF__
 $cap=100000
-if ($override) { $dir=$override } else { $t=Get-ScheduledTask -TaskName $task; if ($t) { $dir=Split-Path -Parent $t.Actions.Execute } }
+$t=Get-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue
+if ($override) { $dir=$override } else {
+  $pname=if ($t) { [IO.Path]::GetFileNameWithoutExtension($t.Actions.Execute) } else { 'dnl' }
+  $proc=Get-Process -Name $pname -ErrorAction SilentlyContinue | Select-Object -First 1
+  if ($proc -and $proc.Path) { $dir=Split-Path -Parent $proc.Path }
+  elseif ($t) { $dir=Split-Path -Parent $t.Actions.Execute }
+}
 if (-not $dir) { $dir=__DNSDIR__ }
 $p=Join-Path $dir 'queries.log'
 $p1=$p+'.1'

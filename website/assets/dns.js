@@ -322,7 +322,15 @@ function buildLoadScript(override) {
     "$ErrorActionPreference='SilentlyContinue'",
     "$task=" + psStr(DNS_TASK),
     "$override=" + psStr(override || ''),
-    "if ($override) { $dir=$override } else { $t=Get-ScheduledTask -TaskName $task; if ($t) { $dir=Split-Path -Parent $t.Actions.Execute } }",
+    // Auto-detect the DNS folder RELATIVE TO THE RUNNING dnl.exe: prefer the live process's own
+    // path, then the TinyDNS task's exe path, then the configured fallback. (Override wins if given.)
+    "$t=Get-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue",
+    "if ($override) { $dir=$override } else {",
+    "  $pname=if ($t) { [IO.Path]::GetFileNameWithoutExtension($t.Actions.Execute) } else { 'dnl' }",
+    "  $proc=Get-Process -Name $pname -ErrorAction SilentlyContinue | Select-Object -First 1",
+    "  if ($proc -and $proc.Path) { $dir=Split-Path -Parent $proc.Path }",
+    "  elseif ($t) { $dir=Split-Path -Parent $t.Actions.Execute }",
+    "}",
     "if (-not $dir) { $dir=" + psStr(DNS_DIR) + " }",
     // NB: read inline with [IO.File]::ReadAllText — do NOT define a helper named 'rd',
     // it's a built-in alias for Remove-Item (aliases outrank functions) and would DELETE the files.
@@ -378,7 +386,7 @@ function refreshHostInfo() {
 function selectAgent(id) {
   state.agent = id;
   try { localStorage.setItem('rmd_agent', id); } catch (e) {}
-  dnsDirInput.value = cachedDir();   // instant: remembered folder for this PC ('' => auto-detect)
+  dnsDirInput.value = '';   // blank => auto-detect relative to the running dnl.exe (no stale cache)
   refreshHostInfo();
   loadAll();
 }
