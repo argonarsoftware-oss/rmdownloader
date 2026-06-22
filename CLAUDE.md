@@ -25,8 +25,13 @@ or tunnel is needed — you just run the agent.
 - `website/` — PHP app (XAMPP locally / Apache on the VPS).
   - `index.php`, `login.php`, `logout.php` — pages. `index.php` is the file manager (breadcrumb, drives,
     terminal + editor modals, upload).
-  - `dns.php` + `assets/dns.js` — the **DNS Manager** page (see DNS subsystem below). Has NO dedicated
-    PHP backend: it drives the agent entirely through the existing `exec` op via `api.php`.
+  - `dns.php` + `assets/dns.js` — the **DNS Manager** page (see DNS subsystem below). Drives the agent
+    through the `exec` op via `api.php`; query-log history is read from `dns-log.php` (MySQL) with a live
+    file-tail fallback.
+  - `dns-log.php` — reads DNS query history from MySQL (filter/page/clear); returns `db:false` when no DB.
+  - `dns-sync.php` + `dns-sync-core.php` — the **agent bridge**: ingest new `queries.log` lines into MySQL
+    via a shared read (never stops `dnl.exe`). `cron/dns-sync.php` is the all-agents CLI for cron.
+  - `dns-schema.sql` — MySQL schema (`dns_queries`, `dns_ingest_state`) + least-priv app user.
   - `agent.php` — agent-facing endpoint: `?action=poll` (long-poll, returns queued commands),
     `?action=result`, and `?action=ping` (keepalive: marks online without claiming commands, used by
     the supervisor during a swap). Auth by per-PC token OR shared `ENROLL_KEY` (`X-Agent-Token`); no session.
@@ -38,7 +43,8 @@ or tunnel is needed — you just run the agent.
     (`enqueue_command`, `claim_commands`, `store_result`, `fetch_result`, `is_online`), and the
     auto-enroll registry (`load_registry`, `register_agent`, `unregister_agent` → `data/agents.json`).
   - `config.sample.php` — copied to `config.php`; holds `ENROLL_KEY`, `rm_agents()`, `DATA_DIR`,
-    `WEB_PASSWORD`, `SESSION_TIMEOUT`, `API_KEY`, `ALLOW_EXEC`, `DNS_DIR`, `DNS_TASK`.
+    `WEB_PASSWORD`, `SESSION_TIMEOUT`, `API_KEY`, `ALLOW_EXEC`, `DNS_DIR`, `DNS_TASK`, `WEBHOOK_SECRET`,
+    and `DB_*` (MySQL for DNS query-log history).
   - `webhook-deploy.php` — GitHub push webhook for auto-deploy on the VPS (see Auto-deploy below).
   - `data/` — runtime command queue (`<agentId>/cmd|res/*.json`, `online`, `version`) + `agents.json`
     (auto-enroll registry) + `deploy.log` (webhook log). `.htaccess` denies web access.
@@ -110,12 +116,27 @@ browser. Three parts:
 - **Config:** `DNS_DIR` (default folder holding `records.txt`/`blocklist.txt`/`dnl.exe`) and `DNS_TASK`
   (`TinyDNS`) in `config.php`; both overridable per-PC in the UI. (Note: the `config.sample.php` comment
   says `dnsserver.exe`, but the built exe is actually `dnl.exe`.)
-- **Query log is a flat TSV file, not a database.** `dnl.exe` *appends* one tab-separated line per query
+- **Query log on the box is a flat TSV file.** `dnl.exe` *appends* one tab-separated line per query
   to `queries.log` (`time, client IP, domain, type, disposition`). It self-rotates: once the file passes
   5 MB it's renamed to `queries.log.1` (one generation kept) and a fresh file started — so old entries
-  age out by rotation, they are never "replaced by newest" in place. `dns.js` reads only the **last 400
-  lines** (`Get-Content -Tail 400`) and shows them newest-first; "Clear" runs `Clear-Content` to empty
-  the file. There is no DB and no server-side dedup/aggregation.
+  age out by rotation, never "replaced by newest" in place.
+- **Optional MySQL history (the agent bridge) — does NOT touch `dnl.exe`.** To keep durable, queryable,
+  cross-PC history without ever stopping the DNS server: the VPS reads only the **new bytes** of
+  `queries.log` through the agent's `exec` op (a **shared, delete-tolerant** read — `FileShare
+  'ReadWrite, Delete'` — so `dnl.exe` keeps appending and can still rotate) and inserts them into MySQL.
+  No `dns_server.py` change, no exe rebuild, no TinyDNS task restart, no DNS outage.
+  - `dns-sync-core.php` (`dns_sync_agent`) holds the logic: read the per-agent byte offset from
+    `dns_ingest_state`, ask the agent for new complete lines past it (capped to ~100 KB/call to stay under
+    the agent's 200 KB `exec` output cap; rotation to `.1` handled by reading its tail then the new file),
+    insert into `dns_queries`, advance the offset. `dns-sync.php` is the browser trigger (login/API-key);
+    `cron/dns-sync.php` is a CLI that syncs all online agents (run every minute so history accrues even
+    with no browser open). Schema in `dns-schema.sql`; PDO via `db()` in `lib.php` (MySQL config `DB_*`).
+  - **Graceful fallback:** if `DB_*` isn't configured, `dns-log.php`/`dns-sync.php` report `db:false` and
+    `dns.js` reverts to tailing `queries.log` live via the agent (the original behavior) — so the feature
+    is purely additive and the page works with or without MySQL.
+  - **UI:** `dns.js` reads history from `dns-log.php` (server-side filter over ALL history, keyset
+    "Load older" paging); "Clear" deletes the DB rows for that PC (the live file is untouched, so new
+    queries re-accumulate). `db`-mode vs `file`-mode is auto-detected on first load.
 
 ## Queue protocol
 Browser/API → `enqueue_command` writes `data/<id>/cmd/<cmdId>.json` → agent long-poll claims it →

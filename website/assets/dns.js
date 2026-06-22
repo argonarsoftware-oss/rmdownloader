@@ -83,37 +83,111 @@ function parseLog(text) {
   var lines = (text || '').split(/\r?\n/).filter(function (l) { return l.indexOf('\t') > -1; });
   return lines.map(function (l) { return l.split('\t'); }).reverse(); // newest first
 }
-function loadLog() {
+var logMode = null;      // 'db' | 'file'  (set on first load)
+var logCursor = null;    // keyset cursor (next_before_id) for "Load more" in DB mode
+
+// dns-log.php helper (MySQL-backed history). Separate from api() (which targets api.php).
+function dnsLog(params, post) {
+  var u = 'dns-log.php?agent=' + encodeURIComponent(state.agent || '');
+  for (var k in params) u += '&' + encodeURIComponent(k) + '=' + encodeURIComponent(params[k]);
+  return fetch(u, { method: post ? 'POST' : 'GET', credentials: 'same-origin' }).then(function (r) {
+    if (r.status === 401) { location.href = 'login.php'; throw new Error('auth'); }
+    return r.json();
+  });
+}
+
+// Trigger the server-side bridge to ingest this PC's new queries.log lines into MySQL.
+// Best-effort: errors (offline / no DB) are ignored — loadLog() handles the fallback.
+function syncLog() {
+  return fetch('dns-sync.php?agent=' + encodeURIComponent(state.agent || '') + '&dir=' + encodeURIComponent(dir()),
+               { credentials: 'same-origin' }).then(function (r) { return r.json(); }).catch(function () { return null; });
+}
+// Ingest-then-display. Skips the sync round-trip once we know there's no DB (file mode).
+function syncThenLoad() {
+  if (logMode === 'file') return loadLog();
+  return syncLog().then(function () { return loadLog(); });
+}
+
+// File-tail fallback — used only when MySQL isn't configured: read queries.log via the agent.
+function loadLogFile() {
   var tbody = document.getElementById('logRows');
   execCmd("Get-Content -LiteralPath '" + logPath() + "' -Tail 400 -Encoding utf8 -ErrorAction SilentlyContinue", 'powershell')
     .then(function (d) {
       if (!d.ok) { tbody.innerHTML = '<tr><td colspan="5" class="muted">' + esc(d.error || 'error') + '</td></tr>'; return; }
+      logMode = 'file'; logCursor = null;
       logData = parseLog(d.stdout || '');
       renderLog();
     });
 }
+
+// Load the newest page from the DB; transparently fall back to the file tail if no DB.
+function loadLog() {
+  logCursor = null;
+  var q = document.getElementById('logFilter').value.trim();
+  return dnsLog({ action: 'query', q: q, limit: 200 }).then(function (d) {
+    if (d && d.ok && d.db) {
+      logMode = 'db';
+      logData = d.rows || [];
+      logCursor = d.next_before_id || null;
+      renderLog();
+    } else if (d && d.db === false) {
+      loadLogFile();                         // DB off -> agent file tail
+    } else {
+      document.getElementById('logRows').innerHTML =
+        '<tr><td colspan="5" class="muted">' + esc((d && d.error) || 'error') + '</td></tr>';
+    }
+  }).catch(function () { loadLogFile(); });
+}
+
+// Append the next older page (DB mode only).
+function loadMore() {
+  if (logMode !== 'db' || !logCursor) return;
+  var q = document.getElementById('logFilter').value.trim();
+  dnsLog({ action: 'query', q: q, limit: 200, before_id: logCursor }).then(function (d) {
+    if (d && d.ok && d.db) {
+      logData = logData.concat(d.rows || []);
+      logCursor = d.next_before_id || null;
+      renderLog();
+    }
+  });
+}
+
 function renderLog() {
   var tbody = document.getElementById('logRows');
-  var f = document.getElementById('logFilter').value.toLowerCase();
+  // DB rows arrive already server-filtered; in file mode filter the tail client-side.
+  var f = (logMode === 'db') ? '' : document.getElementById('logFilter').value.toLowerCase();
   var rows = '';
   var shown = 0;
   for (var i = 0; i < logData.length; i++) {
     var r = logData[i];
-    var line = (r.join(' ')).toLowerCase();
-    if (f && line.indexOf(f) === -1) continue;
+    if (f && (r.join(' ')).toLowerCase().indexOf(f) === -1) continue;
     var disp = r[4] || '';
     var cls = /BLOCKED/.test(disp) ? 'd-block' : (/NXDOMAIN/.test(disp) ? 'd-nx' : (/^LOCAL/.test(disp) ? 'd-local' : 'd-fwd'));
     rows += '<tr><td class="l-time">' + esc(r[0] || '') + '</td><td class="l-client">' + esc(r[1] || '') +
       '</td><td>' + esc(r[2] || '') + '</td><td class="l-type">' + esc(r[3] || '') +
       '</td><td class="l-disp ' + cls + '">' + esc(disp) + '</td></tr>';
-    if (++shown >= 500) break;
+    shown++;
+  }
+  if (logMode === 'db' && logCursor) {
+    rows += '<tr class="log-more"><td colspan="5"><button class="btn ghost" id="logMore">Load older ↓</button></td></tr>';
   }
   tbody.innerHTML = rows || '<tr><td colspan="5" class="muted">no entries</td></tr>';
+  var more = document.getElementById('logMore');
+  if (more) more.onclick = loadMore;
 }
+
 function clearLog() {
-  if (!confirm('Clear the query log on this PC?')) return;
-  execCmd("if (Test-Path -LiteralPath '" + logPath() + "') { Clear-Content -LiteralPath '" + logPath() + "' }", 'powershell')
-    .then(function () { loadLog(); });
+  if (logMode === 'db') {
+    if (!confirm('Clear the stored query history for this PC? (the live log file on the PC is unaffected)')) return;
+    dnsLog({ action: 'clear' }, true).then(function (d) {
+      if (d && d.ok) { toast('Query history cleared', true); loadLog(); }
+      else { toast('Clear failed: ' + ((d && d.error) || 'error'), false); }
+    });
+  } else {
+    if (!confirm('Clear the query log on this PC?')) return;
+    execCmd("if (Test-Path -LiteralPath '" + logPath() + "') { Clear-Content -LiteralPath '" + logPath() + "' }", 'powershell')
+      .then(function () { loadLogFile(); });
+  }
 }
 
 // ---- this machine's IP addresses (what clients point their DNS at) ----
@@ -156,14 +230,11 @@ function buildLoadScript(override) {
     "$rp=Join-Path $dir 'records.txt'",
     "$block=if (Test-Path -LiteralPath $bp) { [IO.File]::ReadAllText($bp) } else { '' }",
     "$rec=if (Test-Path -LiteralPath $rp) { [IO.File]::ReadAllText($rp) } else { '' }",
-    "$logp=Join-Path $dir 'queries.log'",
-    "$log=''",
-    "if (Test-Path -LiteralPath $logp) { $log=((Get-Content -LiteralPath $logp -Tail 400 -Encoding UTF8) -join [char]10) }",
     "$ips=@(Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254.*' } | ForEach-Object { $_.IPAddress + '|' + $_.InterfaceAlias })",
     "$st='unknown'",
     "$q=schtasks /query /tn $task /fo list",
     "if ($LASTEXITCODE -eq 0) { if ($q -match 'Status:\\s*Running') { $st='running' } elseif ($q -match 'Status:\\s*Ready') { $st='stopped' } } else { $st='notask' }",
-    "ConvertTo-Json ([ordered]@{ dir=$dir; block=$block; rec=$rec; log=$log; ips=$ips; status=$st }) -Compress -Depth 3"
+    "ConvertTo-Json ([ordered]@{ dir=$dir; block=$block; rec=$rec; ips=$ips; status=$st }) -Compress -Depth 3"
   ].join("\n");
 }
 function applyBundle(d) {
@@ -176,8 +247,7 @@ function applyBundle(d) {
   document.getElementById('recText').value = j.rec || '';
   renderIps(j.ips || []);
   setStatus(j.status);
-  logData = parseLog(j.log || '');
-  renderLog();
+  syncThenLoad();          // ingest new queries into the DB, then show history (file-tail if no DB)
   msg('');
 }
 
@@ -214,11 +284,17 @@ document.getElementById('btnLookup').onclick = function () {
   var out = document.getElementById('lookupOut'); out.textContent = 'looking up ' + dom + ' …';
   execCmd('nslookup ' + dom + ' 127.0.0.1').then(function (d) { out.textContent = (d.stdout || '') + (d.stderr || ''); });
 };
-document.getElementById('btnLogRefresh').onclick = loadLog;
+document.getElementById('btnLogRefresh').onclick = syncThenLoad;
 document.getElementById('btnLogClear').onclick = clearLog;
-document.getElementById('logFilter').oninput = renderLog;
+var logFilterTimer = null;
+document.getElementById('logFilter').oninput = function () {
+  clearTimeout(logFilterTimer);
+  // DB mode: filter runs server-side over ALL history (debounced). File mode: client-side.
+  if (logMode === 'db') logFilterTimer = setTimeout(loadLog, 300);
+  else renderLog();
+};
 document.getElementById('logAuto').onchange = function () {
-  if (this.checked) { autoTimer = setInterval(loadLog, 4000); } else { clearInterval(autoTimer); autoTimer = null; }
+  if (this.checked) { autoTimer = setInterval(syncThenLoad, 5000); } else { clearInterval(autoTimer); autoTimer = null; }
 };
 
 // ---- boot ----

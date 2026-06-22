@@ -42,6 +42,54 @@ function api_authorized() {
     return false;
 }
 
+// ---- database (optional; DNS query-log history) ----
+
+// Lazy PDO singleton. Returns a PDO, or null if MySQL isn't configured / unreachable.
+// Callers must handle null (the app works file-only without a DB).
+function db() {
+    static $pdo = false;            // false = not yet tried, null = unavailable
+    if ($pdo !== false) return $pdo;
+    if (!defined('DB_NAME') || DB_NAME === '' || !defined('DB_USER') || DB_USER === '') {
+        $pdo = null; return $pdo;
+    }
+    try {
+        $host = defined('DB_HOST') ? DB_HOST : '127.0.0.1';
+        $port = defined('DB_PORT') ? DB_PORT : 3306;
+        $dsn = 'mysql:host=' . $host . ';port=' . $port . ';dbname=' . DB_NAME . ';charset=utf8mb4';
+        $pdo = new PDO($dsn, DB_USER, DB_PASS, array(
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            PDO::ATTR_EMULATE_PREPARES => false,
+        ));
+    } catch (Exception $e) {
+        $pdo = null;
+    }
+    return $pdo;
+}
+
+// Bulk-insert DNS query rows. $rows = array of array(ts, client, domain, qtype, disposition).
+function insert_dns_rows($pdo, $agentId, $rows) {
+    $inserted = 0;
+    $chunk = array();
+    foreach ($rows as $r) {
+        if (count($r) < 5) continue;
+        $chunk[] = array($agentId, substr($r[0], 0, 19), substr($r[1], 0, 45),
+                         substr($r[2], 0, 255), substr($r[3], 0, 16), substr($r[4], 0, 64));
+        if (count($chunk) >= 200) { $inserted += dns_insert_chunk($pdo, $chunk); $chunk = array(); }
+    }
+    if ($chunk) $inserted += dns_insert_chunk($pdo, $chunk);
+    return $inserted;
+}
+
+function dns_insert_chunk($pdo, $chunk) {
+    $ph = implode(',', array_fill(0, count($chunk), '(?,?,?,?,?,?)'));
+    $st = $pdo->prepare('INSERT INTO dns_queries (agent_id, ts, client, domain, qtype, disposition) VALUES ' . $ph);
+    $vals = array();
+    foreach ($chunk as $row) foreach ($row as $v) $vals[] = $v;
+    $st->execute($vals);
+    return count($chunk);
+}
+
 // ---- agent identity ----
 
 // All known PCs = static rm_agents() merged with auto-enrolled agents (registry).

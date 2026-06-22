@@ -52,7 +52,21 @@ define('WEBHOOK_SECRET', '');
 define('ALLOW_EXEC', true);
 
 // ---- DNS manager (TinyDNS) ----
-// Default folder on the agent PC holding records.txt / blocklist.txt / dnsserver.exe,
+// Default folder on the agent PC holding records.txt / blocklist.txt / dnl.exe,
 // and the scheduled-task name. Both are editable per-PC in the DNS page.
 define('DNS_DIR', 'C:\\Users\\Administrator\\Desktop\\dns\\dist');
 define('DNS_TASK', 'TinyDNS');
+
+// ---- MySQL (DNS query-log history) ----
+// The DNS page reads query history from here (dns-log.php). Rows are fed in by an
+// "agent bridge": the VPS reads only the NEW bytes of queries.log through the agent's
+// exec op (a shared read that never stops dnl.exe) and inserts them — see dns-sync.php /
+// cron/dns-sync.php. Leave DB_NAME or DB_USER '' to disable the database entirely; the
+// DNS page then falls back to tailing queries.log live via the agent.
+// One-time setup on the VPS: import website/dns-schema.sql, e.g.
+//   mysql -u root -p < /var/www/rmdownloader/website/dns-schema.sql
+define('DB_HOST', '127.0.0.1');
+define('DB_PORT', 3306);
+define('DB_NAME', 'rmdownloader');
+define('DB_USER', 'rmdownloader');
+define('DB_PASS', '');
