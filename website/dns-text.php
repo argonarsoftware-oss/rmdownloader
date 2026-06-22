@@ -172,9 +172,13 @@ $rp=Join-Path $dir 'records.txt'
 $block=if (Test-Path -LiteralPath $bp) { [IO.File]::ReadAllText($bp) } else { '' }
 $rec=if (Test-Path -LiteralPath $rp) { [IO.File]::ReadAllText($rp) } else { '' }
 $ips=@(Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254.*' } | ForEach-Object { $_.IPAddress + '|' + $_.InterfaceAlias })
+if (-not $t) { $t=Get-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue }
+$exe=if ($t) { Split-Path -Leaf $t.Actions.Execute } else { 'dnl.exe' }
+$pname=[IO.Path]::GetFileNameWithoutExtension($exe)
+$alive=@(Get-Process -Name $pname -ErrorAction SilentlyContinue).Count -gt 0
 $st='unknown'
-$q=schtasks /query /tn $task /fo list
-if ($LASTEXITCODE -eq 0) { if ($q -match 'Status:\s*Running') { $st='running' } elseif ($q -match 'Status:\s*Ready') { $st='stopped' } } else { $st='notask' }
+$q=schtasks /query /tn $task /fo list 2>$null
+if ($alive) { $st='running' } elseif ($LASTEXITCODE -eq 0) { $st='stopped' } else { $st='notask' }
 ConvertTo-Json ([ordered]@{ dir=$dir; block=$block; rec=$rec; ips=$ips; status=$st }) -Compress -Depth 3
 PS1;
     $q = function ($s) { return "'" . str_replace("'", "''", (string)$s) . "'"; };

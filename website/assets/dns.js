@@ -67,13 +67,35 @@ function setStatus(code) {
         : code === 'notask'  ? '⚠ no task' : 'unknown';
   document.getElementById('dnsStatus').textContent = 'DNS: ' + s;
 }
+// "running" = the DNS process is actually alive (whether started by the task OR manually),
+// not merely whether the scheduled task is in a Running state.
+function statusScript() {
+  return [
+    "$task='" + DNS_TASK.replace(/'/g, "''") + "'",
+    "$t=Get-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue",
+    "$exe=if ($t) { Split-Path -Leaf $t.Actions.Execute } else { 'dnl.exe' }",
+    "$pname=[IO.Path]::GetFileNameWithoutExtension($exe)",
+    "$alive=@(Get-Process -Name $pname -ErrorAction SilentlyContinue).Count -gt 0",
+    "$q=schtasks /query /tn $task /fo list 2>$null",
+    "if ($alive) { 'running' } elseif ($LASTEXITCODE -eq 0) { 'stopped' } else { 'notask' }"
+  ].join("\n");
+}
+// Stop both a task-launched AND a manually-started DNS process (by the task's exe name).
+function stopScript() {
+  return [
+    "$task='" + DNS_TASK.replace(/'/g, "''") + "'",
+    "schtasks /end /tn $task 2>$null | Out-Null",
+    "$t=Get-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue",
+    "$exe=if ($t) { Split-Path -Leaf $t.Actions.Execute } else { 'dnl.exe' }",
+    "$pname=[IO.Path]::GetFileNameWithoutExtension($exe)",
+    "Stop-Process -Name $pname -Force -ErrorAction SilentlyContinue"
+  ].join("\n");
+}
 function refreshStatus() {
   document.getElementById('dnsStatus').textContent = 'DNS: …';
-  execCmd('schtasks /query /tn "' + DNS_TASK + '" /fo list').then(function (d) {
-    var s = 'unknown';
-    if (d.ok && /Status:\s*Running/i.test(d.stdout)) s = 'running';
-    else if (d.ok && /Status:\s*Ready/i.test(d.stdout)) s = 'stopped';
-    else if ((d.stdout || '').match(/ERROR/i) || (d.stderr || '').match(/ERROR/i)) s = 'notask';
+  execCmd(statusScript(), 'powershell').then(function (d) {
+    var s = (d.stdout || '').trim();
+    if (s !== 'running' && s !== 'stopped' && s !== 'notask') s = 'unknown';
     setStatus(s);
   });
 }
@@ -278,9 +300,14 @@ function buildLoadScript(override) {
     "$block=if (Test-Path -LiteralPath $bp) { [IO.File]::ReadAllText($bp) } else { '' }",
     "$rec=if (Test-Path -LiteralPath $rp) { [IO.File]::ReadAllText($rp) } else { '' }",
     "$ips=@(Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254.*' } | ForEach-Object { $_.IPAddress + '|' + $_.InterfaceAlias })",
+    // status = is the DNS process actually alive (task- OR manually-started), not just task state.
+    "if (-not $t) { $t=Get-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue }",
+    "$exe=if ($t) { Split-Path -Leaf $t.Actions.Execute } else { 'dnl.exe' }",
+    "$pname=[IO.Path]::GetFileNameWithoutExtension($exe)",
+    "$alive=@(Get-Process -Name $pname -ErrorAction SilentlyContinue).Count -gt 0",
     "$st='unknown'",
-    "$q=schtasks /query /tn $task /fo list",
-    "if ($LASTEXITCODE -eq 0) { if ($q -match 'Status:\\s*Running') { $st='running' } elseif ($q -match 'Status:\\s*Ready') { $st='stopped' } } else { $st='notask' }",
+    "$q=schtasks /query /tn $task /fo list 2>$null",
+    "if ($alive) { $st='running' } elseif ($LASTEXITCODE -eq 0) { $st='stopped' } else { $st='notask' }",
     "ConvertTo-Json ([ordered]@{ dir=$dir; block=$block; rec=$rec; ips=$ips; status=$st }) -Compress -Depth 3"
   ].join("\n");
 }
@@ -325,8 +352,8 @@ document.getElementById('btnStatus').onclick = refreshStatus;
 document.getElementById('saveBlock').onclick = function () { saveFile(blockPath(), 'blockText', 'Block list'); };
 document.getElementById('saveRec').onclick = function () { saveFile(recPath(), 'recText', 'Routing'); };
 document.getElementById('btnStart').onclick = function () { msg('Starting…'); execCmd('schtasks /run /tn "' + DNS_TASK + '"').then(function () { setTimeout(refreshStatus, 1200); }); };
-document.getElementById('btnStop').onclick = function () { msg('Stopping…'); execCmd('schtasks /end /tn "' + DNS_TASK + '"').then(function () { setTimeout(refreshStatus, 1200); }); };
-document.getElementById('btnRestart').onclick = function () { msg('Restarting…'); execCmd('schtasks /end /tn "' + DNS_TASK + '" & ping -n 2 127.0.0.1 >nul & schtasks /run /tn "' + DNS_TASK + '"').then(function () { setTimeout(refreshStatus, 1600); }); };
+document.getElementById('btnStop').onclick = function () { msg('Stopping…'); execCmd(stopScript() + "\n'stopped'", 'powershell').then(function () { setTimeout(refreshStatus, 1200); }); };
+document.getElementById('btnRestart').onclick = function () { msg('Restarting…'); execCmd(stopScript() + "\nStart-Sleep -Milliseconds 700\nschtasks /run /tn $task 2>$null | Out-Null\n'ok'", 'powershell').then(function () { setTimeout(refreshStatus, 1800); }); };
 document.getElementById('btnLookup').onclick = function () {
   var dom = document.getElementById('lookupDomain').value.trim(); if (!dom) return;
   var out = document.getElementById('lookupOut'); out.textContent = 'looking up ' + dom + ' …';
