@@ -132,3 +132,5 @@ tr:hover .row-act{visibility:visible}
 .alert{margin:0 0 10px;padding:10px 14px;border-radius:8px;font-size:13.5px}
 .alert.warn{background:#3a2125;border:1px solid var(--danger);color:#ffd0d0}
 .alert.info{background:#16263a;border:1px solid #388bfd;color:#cfe5ff}
+.upstream-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:4px 0}
+.upstream-row input{flex:1;min-width:320px}

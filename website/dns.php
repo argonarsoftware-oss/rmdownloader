@@ -57,6 +57,28 @@ $dnsTask = defined('DNS_TASK') ? DNS_TASK : 'TinyDNS';
   </section>
 
   <section class="dns-card">
+    <div class="dns-head">🛰 Upstream resolver
+      <span class="muted">where non-local lookups are forwarded · comma-separated · applying restarts DNS (~1s)</span>
+      <span class="spacer"></span><button class="btn" id="saveUpstream">Apply &amp; restart</button></div>
+    <div class="upstream-row">
+      <input type="text" id="upstreamText" placeholder="185.228.168.10,185.228.168.11  (CleanBrowsing — default)">
+      <select id="upstreamPreset" class="agent-select" title="Preset resolvers">
+        <option value="">— preset —</option>
+        <option value="185.228.168.10,185.228.168.11">CleanBrowsing — family filter (current default)</option>
+        <option value="185.228.168.168,185.228.169.168">CleanBrowsing — security only</option>
+        <option value="1.1.1.3,1.0.0.3">Cloudflare — malware + adult block</option>
+        <option value="1.1.1.2,1.0.0.2">Cloudflare — malware block</option>
+        <option value="1.1.1.1,1.0.0.1">Cloudflare — unfiltered</option>
+        <option value="94.140.14.14,94.140.15.15">AdGuard — ad/tracker block</option>
+        <option value="9.9.9.9,149.112.112.112">Quad9 — security</option>
+        <option value="208.67.222.123,208.67.220.123">OpenDNS FamilyShield</option>
+        <option value="8.8.8.8,8.8.4.4">Google — unfiltered</option>
+      </select>
+    </div>
+    <div class="muted" style="font-size:12px;margin-top:6px">Leave blank to reset to the built-in CleanBrowsing default. The DNS server restarts to apply (records/blocklist edits don't need this — they hot-reload).</div>
+  </section>
+
+  <section class="dns-card">
     <div class="dns-head">🔎 Test lookup
       <input type="text" id="lookupDomain" placeholder="example.local" style="margin-left:8px;width:220px">
       <button class="btn" id="btnLookup">Lookup</button></div>

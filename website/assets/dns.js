@@ -100,6 +100,37 @@ function refreshStatus() {
   });
 }
 
+// Rewrite the TinyDNS task's --upstream argument and restart so dnl.exe picks it up.
+function applyUpstream() {
+  var val = document.getElementById('upstreamText').value.trim();
+  if (!/^$|^[0-9.,: ]+$/.test(val)) { toast('Upstream must be IP(s), comma-separated', false); return; }
+  val = val.replace(/\s+/g, '');
+  if (!confirm('Set upstream to "' + (val || 'CleanBrowsing default') + '" and restart the DNS server (~1s)?')) return;
+  msg('Applying upstream…');
+  var ps = [
+    "$task='" + DNS_TASK.replace(/'/g, "''") + "'",
+    "$val='" + val.replace(/'/g, "''") + "'",
+    "$t=Get-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue",
+    "if (-not $t) { 'notask' } else {",
+    "  $exe=$t.Actions[0].Execute",
+    "  $act=if ($val) { New-ScheduledTaskAction -Execute $exe -Argument ('--upstream ' + $val) } else { New-ScheduledTaskAction -Execute $exe }",
+    "  Set-ScheduledTask -TaskName $task -Action $act -ErrorAction SilentlyContinue | Out-Null",
+    "  $pname=[IO.Path]::GetFileNameWithoutExtension($exe)",
+    "  Stop-Process -Name $pname -Force -ErrorAction SilentlyContinue",
+    "  Start-Sleep -Milliseconds 800",
+    "  schtasks /run /tn $task 2>$null | Out-Null",
+    "  'ok'",
+    "}"
+  ].join("\n");
+  execCmd(ps, 'powershell').then(function (d) {
+    var s = (d.stdout || '').trim();
+    if (s.indexOf('notask') >= 0) { toast('No TinyDNS task to update on this PC', false); msg('No TinyDNS task.'); return; }
+    toast('Upstream applied — DNS restarted', true);
+    msg('Upstream set to ' + (val || 'CleanBrowsing default') + '; DNS restarted.');
+    setTimeout(function () { refreshStatus(); }, 1500);
+  });
+}
+
 // ---- query log ----
 function parseLog(text) {
   var lines = (text || '').split(/\r?\n/).filter(function (l) { return l.indexOf('\t') > -1; });
@@ -308,7 +339,10 @@ function buildLoadScript(override) {
     "$st='unknown'",
     "$q=schtasks /query /tn $task /fo list 2>$null",
     "if ($alive) { $st='running' } elseif ($LASTEXITCODE -eq 0) { $st='stopped' } else { $st='notask' }",
-    "ConvertTo-Json ([ordered]@{ dir=$dir; block=$block; rec=$rec; ips=$ips; status=$st }) -Compress -Depth 3"
+    // current upstream forwarder = the --upstream value in the task args (blank = built-in default)
+    "$ua=if ($t -and $t.Actions -and $t.Actions[0].Arguments) { [string]$t.Actions[0].Arguments } else { '' }",
+    "$up=''; if ($ua -match '--upstream\\s+(\\S+)') { $up=$matches[1] }",
+    "ConvertTo-Json ([ordered]@{ dir=$dir; block=$block; rec=$rec; ips=$ips; status=$st; upstream=$up }) -Compress -Depth 3"
   ].join("\n");
 }
 function applyBundle(d) {
@@ -319,6 +353,8 @@ function applyBundle(d) {
   if (j.dir) { dnsDirInput.value = j.dir; cacheDir(j.dir); }
   document.getElementById('blockText').value = j.block || '';
   document.getElementById('recText').value = j.rec || '';
+  var upEl = document.getElementById('upstreamText');
+  if (upEl && typeof j.upstream !== 'undefined') upEl.value = j.upstream || '';
   renderIps(j.ips || []);
   setStatus(j.status);
   // ingest new queries (+ roll up), show history, then refresh the top-sites stats
@@ -351,6 +387,8 @@ document.getElementById('btnReload').onclick = loadAll;
 document.getElementById('btnStatus').onclick = refreshStatus;
 document.getElementById('saveBlock').onclick = function () { saveFile(blockPath(), 'blockText', 'Block list'); };
 document.getElementById('saveRec').onclick = function () { saveFile(recPath(), 'recText', 'Routing'); };
+document.getElementById('saveUpstream').onclick = applyUpstream;
+document.getElementById('upstreamPreset').onchange = function () { if (this.value) document.getElementById('upstreamText').value = this.value; this.selectedIndex = 0; };
 document.getElementById('btnStart').onclick = function () { msg('Starting…'); execCmd('schtasks /run /tn "' + DNS_TASK + '"').then(function () { setTimeout(refreshStatus, 1200); }); };
 document.getElementById('btnStop').onclick = function () { msg('Stopping…'); execCmd(stopScript() + "\n'stopped'", 'powershell').then(function () { setTimeout(refreshStatus, 1200); }); };
 document.getElementById('btnRestart').onclick = function () { msg('Restarting…'); execCmd(stopScript() + "\nStart-Sleep -Milliseconds 700\nschtasks /run /tn $task 2>$null | Out-Null\n'ok'", 'powershell').then(function () { setTimeout(refreshStatus, 1800); }); };

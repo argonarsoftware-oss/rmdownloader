@@ -38,7 +38,7 @@ $doSync = !isset($_REQUEST['sync']) || $_REQUEST['sync'] !== '0';
 if ($doSync && $online) { try { dns_sync_agent($id, ''); } catch (Exception $e) { } }
 
 // Live box state via the agent (status / IPs / blocklist / records).
-$box = array('status' => 'unknown', 'dir' => '', 'ips' => array(), 'block' => '', 'rec' => '');
+$box = array('status' => 'unknown', 'dir' => '', 'ips' => array(), 'block' => '', 'rec' => '', 'upstream' => '');
 if ($online) {
     $res = dns_agent_exec($id, dns_status_script());
     if ($res && !empty($res['ok'])) {
@@ -49,6 +49,7 @@ if ($online) {
             $box['ips'] = isset($j['ips']) && is_array($j['ips']) ? $j['ips'] : array();
             $box['block'] = isset($j['block']) ? $j['block'] : '';
             $box['rec'] = isset($j['rec']) ? $j['rec'] : '';
+            $box['upstream'] = isset($j['upstream']) ? $j['upstream'] : '';
         }
     }
 }
@@ -96,6 +97,7 @@ if ($asJson) {
         'ok' => true,
         'agent' => array('id' => $id, 'name' => $name, 'online' => $online, 'version' => agent_version($id)),
         'service' => $box['status'], 'dns_folder' => $box['dir'], 'ips' => $box['ips'],
+        'upstream' => $box['upstream'],
         'db' => $dbOn, 'days' => $days, 'total_visits' => $totalVisits,
         'top_sites' => $top, 'gambling' => $gambling, 'recent_queries' => $recent,
         'blocklist' => $box['block'], 'records' => $box['rec'],
@@ -110,6 +112,7 @@ $L[] = 'rmdownloader DNS  —  ' . ($name !== '' ? $name : $id);
 $L[] = 'agent id   : ' . $id;
 $L[] = 'online     : ' . ($online ? 'yes' : 'NO (agent not connected)');
 $L[] = 'dns service: ' . $box['status'] . ($box['dir'] !== '' ? '   folder: ' . $box['dir'] : '');
+$L[] = 'upstream   : ' . ($box['upstream'] !== '' ? $box['upstream'] : '185.228.168.10,185.228.168.11 (CleanBrowsing, default)');
 if (!empty($box['ips'])) {
     $ipstr = array();
     foreach ($box['ips'] as $line) { $p = explode('|', $line); $ipstr[] = $p[0] . (isset($p[1]) && $p[1] !== '' ? ' (' . $p[1] . ')' : ''); }
@@ -179,7 +182,9 @@ $alive=@(Get-Process -Name $pname -ErrorAction SilentlyContinue).Count -gt 0
 $st='unknown'
 $q=schtasks /query /tn $task /fo list 2>$null
 if ($alive) { $st='running' } elseif ($LASTEXITCODE -eq 0) { $st='stopped' } else { $st='notask' }
-ConvertTo-Json ([ordered]@{ dir=$dir; block=$block; rec=$rec; ips=$ips; status=$st }) -Compress -Depth 3
+$ua=if ($t -and $t.Actions -and $t.Actions[0].Arguments) { [string]$t.Actions[0].Arguments } else { '' }
+$up=''; if ($ua -match '--upstream\s+(\S+)') { $up=$matches[1] }
+ConvertTo-Json ([ordered]@{ dir=$dir; block=$block; rec=$rec; ips=$ips; status=$st; upstream=$up }) -Compress -Depth 3
 PS1;
     $q = function ($s) { return "'" . str_replace("'", "''", (string)$s) . "'"; };
     $tpl = str_replace('__TASK__', $q($task), $tpl);
