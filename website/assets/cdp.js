@@ -7,6 +7,8 @@
 var state = { agent: null };
 var feedData = [];
 var autoTimer = null;
+var rulesUndo = [];        // stack of previous blt.txt snapshots (per selected PC) for multi-level undo
+var savedRulesText = '';   // what we believe is currently on disk (blt.txt)
 
 // ---- shared API helpers (same shape as dns.js / app.js) ----
 function api(action, params) {
@@ -187,7 +189,7 @@ function parseRules(text) {
     var m = s.match(/^(\S+)(?:\s+(\S+)(?:\s+([\s\S]+))?)?$/);
     if (!m) return;
     var domain = m[1], action = (m[2] || 'block').toLowerCase(), arg = (m[3] || '').trim();
-    if (action !== 'block' && action !== 'warn' && action !== 'replace') { action = 'block'; arg = ''; }
+    if (action !== 'block' && action !== 'warn' && action !== 'replace' && action !== 'redirect') { action = 'block'; arg = ''; }
     out.push({ domain: domain, action: action, arg: arg });
   });
   return out;
@@ -250,6 +252,16 @@ function updateRulesStatus() {
   var n = collectRules().length;
   document.getElementById('rulesStatus').textContent = n ? (n + ' rule' + (n > 1 ? 's' : '')) : '';
 }
+function rulesPath() { return (dir() || CDP_DIR) + '\\blt.txt'; }
+function writeRules(text) { return post('save', { path: rulesPath() }, { content: text }); }
+
+function updateUndoBtn() {
+  var b = document.getElementById('undoRules');
+  if (!b) return;
+  b.hidden = rulesUndo.length === 0;
+  b.title = rulesUndo.length ? ('Revert the last rules change (' + rulesUndo.length + ' step' + (rulesUndo.length > 1 ? 's' : '') + ' available)') : 'Nothing to undo';
+}
+
 function saveRules() {
   var rules = collectRules();
   for (var i = 0; i < rules.length; i++) {
@@ -257,14 +269,34 @@ function saveRules() {
       toast('"' + rules[i].domain + '": ' + rules[i].action + ' needs a full URL (https://…)', false); return;
     }
   }
-  var path = (dir() || CDP_DIR) + '\\blt.txt';
+  var text = serializeRules(rules);
+  if (text === savedRulesText) { toast('No changes to save', true); return; }
   msg('Saving rules…');
-  post('save', { path: path }, { content: serializeRules(rules) })
-    .then(function (d) {
-      if (d.ok) { toast('Rules saved — applies live', true); msg('Rules saved — the monitor hot-reloads them (~2s).'); }
-      else { toast('Save failed: ' + (d.error || ''), false); msg('Save failed: ' + (d.error || '')); }
-    })
-    .catch(function (e) { toast('Save failed: ' + e.message, false); });
+  writeRules(text).then(function (d) {
+    if (d.ok) {
+      rulesUndo.push(savedRulesText);   // remember the on-disk state before this save, so we can revert to it
+      savedRulesText = text;
+      updateUndoBtn();
+      toast('Rules saved — applies live', true);
+      msg('Rules saved — the monitor hot-reloads them (~2s). Use Undo to revert.');
+    } else { toast('Save failed: ' + (d.error || ''), false); msg('Save failed: ' + (d.error || '')); }
+  }).catch(function (e) { toast('Save failed: ' + e.message, false); });
+}
+
+// Revert the most recent save: rewrite blt.txt with the previous snapshot and re-render the table.
+function undoRules() {
+  if (!rulesUndo.length) return;
+  var prev = rulesUndo.pop();
+  updateUndoBtn();
+  msg('Undoing last rules change…');
+  writeRules(prev).then(function (d) {
+    if (d.ok) {
+      savedRulesText = prev;
+      renderRules(parseRules(prev));
+      toast('Reverted to previous rules', true);
+      msg('Reverted — the monitor hot-reloads (~2s).');
+    } else { rulesUndo.push(prev); updateUndoBtn(); toast('Undo failed: ' + (d.error || ''), false); }
+  }).catch(function (e) { rulesUndo.push(prev); updateUndoBtn(); toast('Undo failed: ' + e.message, false); });
 }
 
 // ---- ONE PowerShell round-trip: status + chrome + tabs + rules + feed tail ----
@@ -302,7 +334,8 @@ function applyBundle(d) {
   if (!j.hasexe) { document.getElementById('cdpNote').innerHTML = '⚠ <b>chnav.exe not found</b> on this PC (looked next to the agent and at <code>' + esc(j.dir) + '</code>). Build it (<code>chrome-nav/build.bat</code>) and deploy <code>dist/chnav.exe</code>, or set the folder field.'; }
   var tg = j.targets; if (typeof tg === 'string') tg = [tg]; if (!tg) tg = [];
   renderTabs(tg);
-  renderRules(parseRules(j.rules || ''));
+  savedRulesText = j.rules || '';   // remember disk state so save/undo can diff against it
+  renderRules(parseRules(savedRulesText));
   feedData = parseFeed(j.log || '');
   renderFeed();
   msg('');
@@ -325,6 +358,7 @@ function selectAgent(id) {
   state.agent = id;
   try { localStorage.setItem('rmd_agent', id); } catch (e) {}
   dirInput.value = '';   // blank => auto-detect (running chnav / next to the agent / config fallback)
+  rulesUndo = []; updateUndoBtn();   // undo history is per-PC; reset when switching
   refreshHostInfo();
   loadAll();
 }
@@ -344,6 +378,7 @@ document.getElementById('btnCloseChrome').onclick = function () {
 };
 document.getElementById('addRule').onclick = addRule;
 document.getElementById('saveRules').onclick = saveRules;
+document.getElementById('undoRules').onclick = undoRules;
 document.getElementById('btnFeedRefresh').onclick = loadAll;
 document.getElementById('btnFeedClear').onclick = clearFeed;
 document.getElementById('feedFilter').oninput = renderFeed;

@@ -62,6 +62,7 @@ $cdpPort = defined('CDP_PORT') ? CDP_PORT : 9222;
       <span class="muted">per domain · <code>*.x</code> wildcard · hot-reloads live</span>
       <span class="spacer"></span><span id="rulesStatus" class="muted" style="margin-right:8px"></span>
       <button class="btn" id="addRule">＋ Add rule</button>
+      <button class="btn ghost" id="undoRules" title="Nothing to undo" hidden>↶ Undo</button>
       <button class="btn" id="saveRules">Save</button></div>
     <table class="rules-table">
       <thead><tr><th class="r-dom">Domain</th><th class="r-actcol">Action</th><th>Target&nbsp;/&nbsp;message</th><th class="r-x"></th></tr></thead>
