@@ -172,7 +172,8 @@ function renderTabs(targets) {
 }
 
 // ---- site rules editor (block / warn / replace) -> blt.txt ----
-var RULE_ACTIONS = [['block', 'Block'], ['warn', 'Warn'], ['replace', 'Replace with'], ['redirect', 'Redirect to']];
+// Redirect is the primary action (transparent — the URL changes to the target).
+var RULE_ACTIONS = [['redirect', 'Redirect to'], ['block', 'Block'], ['warn', 'Warn'], ['replace', 'Replace with']];
 function argHint(action) {
   if (action === 'redirect') return 'https://phkarera.com/  (URL changes — clean)';
   if (action === 'replace') return 'https://www.youtube.com/  (URL stays)';
@@ -227,7 +228,7 @@ function renderRules(rules) {
 function addRule() {
   var tbody = document.getElementById('ruleRows');
   var div = document.createElement('tbody');
-  div.innerHTML = ruleRowHtml({ domain: '', action: 'block', arg: '' });
+  div.innerHTML = ruleRowHtml({ domain: '', action: 'redirect', arg: '' });
   tbody.appendChild(div.firstChild);
   wireRuleRows();
   var rows = tbody.querySelectorAll('tr'); var last = rows[rows.length - 1];
