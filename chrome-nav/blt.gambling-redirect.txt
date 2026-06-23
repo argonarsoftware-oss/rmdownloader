@@ -1,0 +1,40 @@
+# Gambling -> phkarera.com redirect rules (CDP / chnav blt.txt format)
+#
+# Transparent redirect: when one of these domains is opened, chnav navigates the tab
+# to https://phkarera.com/ — the address bar CHANGES to phkarera.com (no spoofing).
+#
+# Source: the brand list in website/lib.php is_gambling_domain(). Bare domains also
+# match their subdomains (e.g. www.jilibet.com). These brands ROTATE domains often, so
+# treat this as a STARTER set and keep it current from the DNS top-sites gambling list.
+#
+# How to use: open cdp.php, paste these into the Site-rules table (or load this file),
+# Save -> chnav hot-reloads (~2s). Generic keywords (casino/poker/slots/betting/bingo/
+# sabong/lottery/...) can't be host rules here — keep those in the DNS blocklist.
+
+jilibet.com        redirect   https://phkarera.com/
+bingoplus.com      redirect   https://phkarera.com/
+bingoplus.net      redirect   https://phkarera.com/
+luckycola.com      redirect   https://phkarera.com/
+okbet.com          redirect   https://phkarera.com/
+phlwin.com         redirect   https://phkarera.com/
+panaloko.com       redirect   https://phkarera.com/
+747.live           redirect   https://phkarera.com/
+fc777.com          redirect   https://phkarera.com/
+ph365.com          redirect   https://phkarera.com/
+mwplay888.com      redirect   https://phkarera.com/
+peso888.com        redirect   https://phkarera.com/
+gemdisco.com       redirect   https://phkarera.com/
+nustabet.com       redirect   https://phkarera.com/
+hawkplay.com       redirect   https://phkarera.com/
+lodibet.com        redirect   https://phkarera.com/
+jili777.com        redirect   https://phkarera.com/
+phdream.com        redirect   https://phkarera.com/
+superace88.com     redirect   https://phkarera.com/
+winph.com          redirect   https://phkarera.com/
+tmtplay.net        redirect   https://phkarera.com/
+phwin.com          redirect   https://phkarera.com/
+phpwin.com         redirect   https://phkarera.com/
+winzir.com         redirect   https://phkarera.com/
+bossjili.com       redirect   https://phkarera.com/
+megapanalo.com     redirect   https://phkarera.com/
+em777w9.cc         redirect   https://phkarera.com/
