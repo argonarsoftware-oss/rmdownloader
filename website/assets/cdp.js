@@ -95,7 +95,8 @@ function startScript() {
   // --persist = always-on enforcement (re-seize Chrome, kill non-regulated instances).
   if (document.getElementById('optEnforce') && document.getElementById('optEnforce').checked) lines.push("  $a+='--persist'");
   lines.push(
-    "  Start-Process -FilePath $exe -ArgumentList $a -RedirectStandardOutput $log -RedirectStandardError (Join-Path $dir 'nav.err') -WindowStyle Hidden",
+    // chnav writes nav.log itself (so the exe can be windowless) — just launch it hidden.
+    "  Start-Process -FilePath $exe -ArgumentList $a -WindowStyle Hidden",
     "  Start-Sleep -Milliseconds 500",
     "  if (@(Get-Process chnav -ErrorAction SilentlyContinue).Count -gt 0) { 'started' } else { 'failed' }",
     "}"

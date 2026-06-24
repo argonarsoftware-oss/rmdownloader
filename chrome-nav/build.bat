@@ -21,9 +21,9 @@ if not "%TOKEN%"=="" (
 ) else (
   if exist _embed.py del _embed.py
 )
-REM Console build (NOT --noconsole): chnav prints to stdout which the agent path redirects to nav.log;
-REM a windowless build would have no stdout and break that. Start-Process -WindowStyle Hidden hides it.
-pyinstaller --onefile --name chnav chrome_nav_monitor.py
+REM Windowless build (--noconsole): no console window + no traceback dialog ever — running the exe
+REM from cmd or a boot task pops nothing. chnav writes its own nav.log (stdout not needed).
+pyinstaller --onefile --noconsole --name chnav chrome_nav_monitor.py
 if exist _embed.py del _embed.py
 echo.
 echo Built dist\chnav.exe

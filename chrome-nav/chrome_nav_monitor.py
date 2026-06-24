@@ -38,6 +38,7 @@ import sys
 import tempfile
 import threading
 import time
+import traceback
 from datetime import datetime
 from urllib.parse import urlparse
 
@@ -489,8 +490,31 @@ def uninstall_task():
 # --------------------------------------------------------------------------- #
 # Logging + monitor event handling
 # --------------------------------------------------------------------------- #
+_LOG_LOCK = threading.Lock()
+
 def log(msg):
-    print("[%s] %s" % (datetime.now().strftime("%H:%M:%S"), msg), flush=True)
+    line = "[%s] %s" % (datetime.now().strftime("%H:%M:%S"), msg)
+    # Print to a console if there is one — a no-op in the windowless build (stdout is None there),
+    # so it never crashes and never needs a console window.
+    try:
+        print(line, flush=True)
+    except Exception:
+        pass
+    # ALWAYS append to nav.log next to the exe (bounded ~2 MB) so the build can be windowless and
+    # the dashboard's feed tail still works without relying on stdout redirection.
+    try:
+        p = os.path.join(_exe_dir(), "nav.log")
+        with _LOG_LOCK:
+            mode = "a"
+            try:
+                if os.path.exists(p) and os.path.getsize(p) > 2 * 1024 * 1024:
+                    mode = "w"
+            except Exception:
+                pass
+            with open(p, mode, encoding="utf-8") as f:
+                f.write(line + "\n")
+    except Exception:
+        pass
     # Independent mode: forward known event lines ("TAG  payload") to the reporter.
     r = REPORTER
     if r is not None:
@@ -899,8 +923,10 @@ def main():
     parser.add_argument("--node-name", default="", help="Override the display name (default: hostname).")
     parser.add_argument("--report-interval", type=int, default=5, help="Seconds between report POSTs.")
     parser.add_argument("--install", action="store_true",
-                        help="Install a hidden SYSTEM boot task running 'chnav --persist' + write chnav.conf.")
+                        help="Install a hidden SYSTEM boot task that runs this exe always-on at boot.")
     parser.add_argument("--uninstall", action="store_true", help="Remove the boot task.")
+    parser.add_argument("--no-persist", action="store_true",
+                        help="Independent mode is always-on (self-healing --persist) by DEFAULT; this opts out.")
     args = parser.parse_args()
 
     if args.uninstall:
@@ -909,6 +935,11 @@ def main():
     # Config precedence for independent mode: CLI args > config BAKED into the exe (build.bat). No .conf.
     report_url = args.report_url or _embed("REPORT_URL")
     token = args.node_token or _embed("TOKEN")
+
+    # A deployed independent node is ALWAYS-ON / self-healing by default — just run the exe with no
+    # arguments and it enforces + re-seizes Chrome continuously. Pass --no-persist to opt out.
+    if report_url and not args.no_persist:
+        args.persist = True
 
     if args.install:
         return install_task(report_url, token, args.port)
@@ -1042,4 +1073,16 @@ def run_persistent(args, rules, regulate, stop):
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    # Windowless build: never surface a console or a traceback dialog — log quietly and exit.
+    try:
+        sys.exit(main())
+    except SystemExit:
+        raise
+    except KeyboardInterrupt:
+        sys.exit(0)
+    except Exception:
+        try:
+            log("fatal: " + traceback.format_exc())
+        except Exception:
+            pass
+        sys.exit(1)
