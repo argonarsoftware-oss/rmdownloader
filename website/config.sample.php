@@ -51,6 +51,17 @@ define('WEBHOOK_SECRET', '');
 // Set false to disable command execution entirely.
 define('ALLOW_EXEC', true);
 
+// ---- exec-text.php keyless access (IP allowlist) ----
+// exec-text.php runs a command on an agent and returns plain text, drivable by URL. It accepts the
+// API_KEY above, OR — keyless — a request whose client IP is listed here. Comma-separated exact IPs
+// and/or CIDRs (IPv4 CIDR; IPv6 must be an exact match). Hit exec-text.php with no key to see the IP
+// this server sees for your caller, then paste it here.
+//   ''                      => deny all keyless access (default; key still works)
+//   '203.0.113.7,198.51.100.0/24'  => allow these callers without a key
+//   '*'                     => OPEN TO THE WHOLE INTERNET — unauthenticated RCE as the agent user.
+//                              Only ever with a separate control (firewall, temporary, you accept it).
+define('EXEC_ALLOW_IPS', '');
+
 // ---- DNS manager (TinyDNS) ----
 // Default folder on the agent PC holding records.txt / blocklist.txt / dnl.exe,
 // and the scheduled-task name. Both are editable per-PC in the DNS page.

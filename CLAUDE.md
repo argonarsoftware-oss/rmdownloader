@@ -47,8 +47,11 @@ or tunnel is needed — you just run the agent.
   - `exec-text.php` — automation/Claude-Code exec view: run a command on an agent and get
     **plain-text** output, drivable by URL (`?key=<API_KEY>&agent=<id|name>&cmd=…[&shell=…][&cwd=…]
     [&format=json][&timeout=]`). No `cmd` ⇒ prints usage + the agent list (online `*`) for discovery;
-    resolves `agent` by id, case-insensitive id/name, or id-prefix. **Auth is API-KEY-ONLY** (no
-    session fallback) on purpose: exec over GET + session auth would be a CSRF→RCE hole. Honors
+    resolves `agent` by id, case-insensitive id/name, or id-prefix. **Auth = API key OR an IP
+    allowlist (`EXEC_ALLOW_IPS`), never an ambient session** (exec over GET + session = CSRF→RCE).
+    Keyless access is opt-in per client IP/CIDR; **deny-by-default** (empty allowlist + empty
+    `API_KEY` ⇒ all rejected, so deploying the file opens nothing). `'*'`/`0.0.0.0/0` = open RCE.
+    Hitting it unauthorized echoes the caller's IP so you know what to allowlist. Honors
     `ALLOW_EXEC`; key + command ride in the URL (access-log caveat) so keep HTTPS.
   - `terminal.php` + `assets/terminal.js` — standalone full-page remote terminal (the file-manager
     modal as its own page): same agent `exec` op, cmd/PowerShell switch, per-shell stateful cwd,
