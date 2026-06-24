@@ -44,6 +44,15 @@ or tunnel is needed — you just run the agent.
     the result. Auth via session login OR `API_KEY` (`?key=` / `X-Api-Key`). Actions: `agents`,
     `removeagent`, `info`, `list`, `read`, `mkdir`, `delete`, `rename`, `save`, `exec`, `update`,
     `upload`, `download`.
+  - `exec-text.php` — automation/Claude-Code exec view: run a command on an agent and get
+    **plain-text** output, drivable by URL (`?key=<API_KEY>&agent=<id|name>&cmd=…[&shell=…][&cwd=…]
+    [&format=json][&timeout=]`). No `cmd` ⇒ prints usage + the agent list (online `*`) for discovery;
+    resolves `agent` by id, case-insensitive id/name, or id-prefix. **Auth is API-KEY-ONLY** (no
+    session fallback) on purpose: exec over GET + session auth would be a CSRF→RCE hole. Honors
+    `ALLOW_EXEC`; key + command ride in the URL (access-log caveat) so keep HTTPS.
+  - `terminal.php` + `assets/terminal.js` — standalone full-page remote terminal (the file-manager
+    modal as its own page): same agent `exec` op, cmd/PowerShell switch, per-shell stateful cwd,
+    command history (↑/↓), Ctrl+L clear. Linked from the topbar nav on Files / DNS / CDP.
   - `lib.php` — session/auth (`api_authorized`), agent lookup, the file-based queue
     (`enqueue_command`, `claim_commands`, `store_result`, `fetch_result`, `is_online`), and the
     auto-enroll registry (`load_registry`, `register_agent`, `unregister_agent` → `data/agents.json`).
