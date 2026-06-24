@@ -40,3 +40,13 @@ winzir.com         redirect   https://phkarera.com/
 bossjili.com       redirect   https://phkarera.com/
 megapanalo.com     redirect   https://phkarera.com/
 em777w9.cc         redirect   https://phkarera.com/
+
+# Rotated / sibling domains found by real on-machine testing (the brands above 302 to these).
+jilibetofficial.com redirect  https://phkarera.com/
+ipph3655.top        redirect  https://phkarera.com/
+fphdream.com        redirect  https://phkarera.com/
+superace88.com.ph   redirect  https://phkarera.com/
+83winph.com         redirect  https://phkarera.com/
+hhphwin.com         redirect  https://phkarera.com/
+winzir.ph           redirect  https://phkarera.com/
+116.193.153.157     redirect  https://phkarera.com/

