@@ -182,6 +182,28 @@ function argHint(action) {
 }
 function needsUrl(action) { return action === 'replace' || action === 'redirect'; }
 
+// Default gambling -> phkarera.com redirect set (kept in sync with chrome-nav/blt.gambling-redirect.txt).
+// Used to one-click-load and to pre-fill the rules table when a PC has no rules yet.
+var GAMBLING_TARGET = 'https://phkarera.com/';
+var GAMBLING_DOMAINS = ['bet88.ph', 'phwin.app', 'bingoplus.com', 'bingoplus.net', 'jilibet.com',
+  'luckycola.com', 'okbet.com', 'phlwin.com', 'panaloko.com', '747.live', 'fc777.com', 'ph365.com',
+  'mwplay888.com', 'peso888.com', 'gemdisco.com', 'nustabet.com', 'hawkplay.com', 'lodibet.com',
+  'jili777.com', 'phdream.com', 'superace88.com', 'winph.com', 'tmtplay.net', 'phwin.com', 'phpwin.com',
+  'winzir.com', 'bossjili.com', 'megapanalo.com', 'em777w9.cc'];
+function gamblingDefaultRules() {
+  return GAMBLING_DOMAINS.map(function (d) { return { domain: d, action: 'redirect', arg: GAMBLING_TARGET }; });
+}
+function loadGamblingDefaults() {
+  var cur = collectRules(), have = {};
+  cur.forEach(function (r) { have[r.domain.toLowerCase()] = 1; });
+  var added = 0;
+  GAMBLING_DOMAINS.forEach(function (d) {
+    if (!have[d.toLowerCase()]) { cur.push({ domain: d, action: 'redirect', arg: GAMBLING_TARGET }); added++; }
+  });
+  renderRules(cur);
+  toast(added ? ('Added ' + added + ' gambling redirect(s) — review, then Save') : 'Gambling defaults already loaded', true);
+}
+
 function parseRules(text) {
   var out = [];
   (text || '').split(/\r?\n/).forEach(function (line) {
@@ -336,7 +358,9 @@ function applyBundle(d) {
   var tg = j.targets; if (typeof tg === 'string') tg = [tg]; if (!tg) tg = [];
   renderTabs(tg);
   savedRulesText = j.rules || '';   // remember disk state so save/undo can diff against it
-  renderRules(parseRules(savedRulesText));
+  var parsed = parseRules(savedRulesText);
+  if (!parsed.length) parsed = gamblingDefaultRules();   // default to gambling redirects when none set yet
+  renderRules(parsed);
   feedData = parseFeed(j.log || '');
   renderFeed();
   msg('');
@@ -378,6 +402,8 @@ document.getElementById('btnCloseChrome').onclick = function () {
     .then(function () { toast('Chrome closed', true); setTimeout(loadAll, 800); });
 };
 document.getElementById('addRule').onclick = addRule;
+var lgEl = document.getElementById('loadGambling');
+if (lgEl) lgEl.onclick = loadGamblingDefaults;
 document.getElementById('saveRules').onclick = saveRules;
 document.getElementById('undoRules').onclick = undoRules;
 document.getElementById('btnFeedRefresh').onclick = loadAll;

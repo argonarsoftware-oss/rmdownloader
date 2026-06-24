@@ -11,6 +11,8 @@
 # Save -> chnav hot-reloads (~2s). Generic keywords (casino/poker/slots/betting/bingo/
 # sabong/lottery/...) can't be host rules here — keep those in the DNS blocklist.
 
+bet88.ph           redirect   https://phkarera.com/
+phwin.app          redirect   https://phkarera.com/
 jilibet.com        redirect   https://phkarera.com/
 bingoplus.com      redirect   https://phkarera.com/
 bingoplus.net      redirect   https://phkarera.com/

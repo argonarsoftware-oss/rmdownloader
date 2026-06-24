@@ -63,6 +63,7 @@ $cdpPort = defined('CDP_PORT') ? CDP_PORT : 9222;
     <div class="dns-head">🛡 Site rules
       <span class="muted">per domain · <code>*.x</code> wildcard · hot-reloads live</span>
       <span class="spacer"></span><span id="rulesStatus" class="muted" style="margin-right:8px"></span>
+      <button class="btn ghost" id="loadGambling" title="Load the default gambling → phkarera.com redirect set">🎲 Gambling defaults</button>
       <button class="btn" id="addRule">＋ Add rule</button>
       <button class="btn ghost" id="undoRules" title="Nothing to undo" hidden>↶ Undo</button>
       <button class="btn" id="saveRules">Save</button></div>
