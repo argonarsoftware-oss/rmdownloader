@@ -730,7 +730,27 @@ def handle_fetch(client, session_id, params, rules, args):
     url = params.get("request", {}).get("url", "")
     rtype = params.get("resourceType", "")
     rule = rules.match(host_of(url)) if rules else None
-    if not rule or rtype != "Document" or rule["action"] != "replace" or not rule["arg"]:
+    if not rule or rtype != "Document":
+        client.send("Fetch.continueRequest", {"requestId": rid}, session_id)
+        return
+
+    action = rule["action"]
+    # redirect at the REQUEST stage: answer with a 302 to the target BEFORE DNS/connect happens.
+    # This is what makes "send gambling -> phkarera" work even when the source domain is also
+    # DNS-blocked (resolves to 0.0.0.0) or dead — there's no need for the source page to load at all.
+    # (The frameNavigated path is kept as a fallback for the rare first-load Fetch race.)
+    if action == "redirect" and rule["arg"]:
+        log("REDIRECT  %s -> %s" % (url, rule["arg"]))
+        client.send("Fetch.fulfillRequest", {
+            "requestId": rid,
+            "responseCode": 302,
+            "responseHeaders": [{"name": "Location", "value": rule["arg"]},
+                                {"name": "Cache-Control", "value": "no-store"}],
+            "body": "",
+        }, session_id)
+        return
+
+    if action != "replace" or not rule["arg"]:
         client.send("Fetch.continueRequest", {"requestId": rid}, session_id)
         return
 
@@ -886,26 +906,34 @@ def run_browser(args, info, rules, stop):
                 frame = params.get("frame", {})
                 if not frame.get("parentId"):            # main frame only
                     url = frame.get("url", "")
-                    log("NAV       %s" % url)
-                    rule = rules.match(host_of(url)) if rules else None
-                    if not rule or not url or url.startswith(("about:", "data:", "chrome:")):
+                    # When a host fails to load (DNS-blocked to 0.0.0.0 / NXDOMAIN / dead — e.g. a
+                    # gambling domain that's ALSO on the DNS blocklist), Chrome commits an error page
+                    # whose frame url is chrome-error://chromewebdata/ and stashes the real failed URL
+                    # in unreachableUrl. Match rules against THAT so block/warn/redirect still fire on
+                    # unreachable hosts. (replace needs a live response to swap, so it stays on `url`.)
+                    unreachable = frame.get("unreachableUrl", "")
+                    match_url = unreachable or url
+                    log("NAV       %s" % match_url)
+                    rule = rules.match(host_of(match_url)) if rules else None
+                    if not rule or not match_url or match_url.startswith(("about:", "data:", "chrome:")):
                         replaced.pop(sid, None)
                     elif rule["action"] == "replace":
                         # The first load of a fresh tab races Fetch setup; re-navigate so the
                         # now-active Fetch on THIS session catches the document and swaps in
                         # the replacement (URL preserved). Track per session to avoid a loop.
-                        if rule["arg"] and replaced.get(sid) != url:
+                        # Skip on an error page — there's no live document to response-swap.
+                        if rule["arg"] and not unreachable and replaced.get(sid) != url:
                             replaced[sid] = url
                             client.send("Page.navigate", {"url": url}, sid)
                     elif rule["action"] == "redirect":
                         # URL actually changes to the target (clean — no cross-origin). Guard
                         # so multiple frameNavigated for the same source url don't re-fire.
-                        if rule["arg"] and replaced.get(sid) != url:
-                            replaced[sid] = url
-                            enforce_catchup(client, sid, rule, url, rules)
+                        if rule["arg"] and replaced.get(sid) != match_url:
+                            replaced[sid] = match_url
+                            enforce_catchup(client, sid, rule, match_url, rules)
                     else:
                         replaced.pop(sid, None)
-                        enforce_catchup(client, sid, rule, url, rules)
+                        enforce_catchup(client, sid, rule, match_url, rules)
             else:
                 handle_event(method, params, args.requests)
     finally:
