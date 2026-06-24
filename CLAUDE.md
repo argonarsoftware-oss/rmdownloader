@@ -31,6 +31,11 @@ or tunnel is needed — you just run the agent.
   - `cdp.php` + `assets/cdp.js` — the **CDP / Chrome Navigation** page (see CDP subsystem below). Same
     no-PHP-backend design as DNS: it manages the `chrome-nav` exes on a PC purely through the agent's
     `exec` op and tails their log output.
+  - `cdp-text.php` — automation/Claude-Code CDP view (the CDP twin of `dns-text.php`): `?key=<API_KEY>`
+    (or login) returns a plain-text chnav report — monitor running state, folder, `chnav.exe` presence,
+    Chrome debug-port + version, open tabs, `blt.txt` site rules + action breakdown, and the `nav.log`
+    feed tail; `&format=json` for JSON. Resolves `agent` by id/name/prefix; runs one batched exec
+    round-trip (mirrors `cdp.js` buildLoadScript).
   - `dns-log.php` — reads DNS query history from MySQL (filter/page/clear); returns `db:false` when no DB.
   - `dns-text.php` — automation/Claude-Code view: `?key=<API_KEY>` (or login) returns a plain-text DNS
     report (service status, IPs, top sites, recent queries, blocklist+records); `&format=json` for JSON.
