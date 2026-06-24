@@ -142,6 +142,67 @@ function is_gambling_domain($host) {
     return false;
 }
 
+// ---- CDP independent nodes (chnav reporting WITHOUT the agent) ----
+// chnav.exe reverse-connects to cdp-node.php to push nav events + status and pull its rules.
+// These mirror the dns_* helpers but for the cdp_* tables (see cdp-schema.sql).
+
+function cdp_register_node($pdo, $id, $name, $info) {
+    $chrome  = substr((string)(isset($info['chrome']) ? $info['chrome'] : ''), 0, 64);
+    $tabs    = substr(json_encode(isset($info['tabs']) && is_array($info['tabs']) ? $info['tabs'] : array()), 0, 60000);
+    $running = !empty($info['running']) ? 1 : 0;
+    $st = $pdo->prepare('INSERT INTO cdp_nodes (node_id, name, first_seen, last_seen, chrome, tabs, running)
+                         VALUES (?,?,NOW(),NOW(),?,?,?)
+                         ON DUPLICATE KEY UPDATE name=VALUES(name), last_seen=NOW(),
+                           chrome=VALUES(chrome), tabs=VALUES(tabs), running=VALUES(running)');
+    $st->execute(array($id, ($name !== '' ? $name : $id), $chrome, $tabs, $running));
+}
+
+function cdp_insert_events($pdo, $id, $events) {
+    $rows = array();
+    foreach ($events as $e) {
+        if (!is_array($e)) continue;
+        $rows[] = array($id,
+            substr((string)(isset($e['ts'])    ? $e['ts']    : ''), 0, 19),
+            substr((string)(isset($e['type'])  ? $e['type']  : ''), 0, 12),
+            substr((string)(isset($e['url'])   ? $e['url']   : ''), 0, 1024),
+            substr((string)(isset($e['title']) ? $e['title'] : ''), 0, 255));
+    }
+    if (!$rows) return 0;
+    $ins = 0;
+    for ($i = 0; $i < count($rows); $i += 200) {
+        $chunk = array_slice($rows, $i, 200);
+        $ph = implode(',', array_fill(0, count($chunk), '(?,?,?,?,?)'));
+        $st = $pdo->prepare('INSERT INTO cdp_events (node_id, ts, type, url, title) VALUES ' . $ph);
+        $vals = array();
+        foreach ($chunk as $r) foreach ($r as $v) $vals[] = $v;
+        $st->execute($vals);
+        $ins += count($chunk);
+    }
+    return $ins;
+}
+
+function cdp_get_rules($pdo, $id) {
+    $st = $pdo->prepare('SELECT rules, version FROM cdp_rules WHERE node_id = ?');
+    $st->execute(array($id));
+    $row = $st->fetch();
+    if (!$row) { $st->execute(array('*')); $row = $st->fetch(); }   // fall back to global default
+    return $row ? array('rules' => (string)$row['rules'], 'version' => (int)$row['version'])
+                : array('rules' => '', 'version' => 0);
+}
+
+function cdp_set_rules($pdo, $id, $rules) {
+    $st = $pdo->prepare('INSERT INTO cdp_rules (node_id, rules, version, updated_at) VALUES (?,?,1,NOW())
+                         ON DUPLICATE KEY UPDATE rules=VALUES(rules), version=version+1, updated_at=NOW()');
+    $st->execute(array($id, (string)$rules));
+}
+
+function cdp_nodes($pdo) {
+    $st = $pdo->query('SELECT node_id, name, last_seen, chrome, tabs, running,
+                        (UNIX_TIMESTAMP() - UNIX_TIMESTAMP(last_seen)) AS age
+                       FROM cdp_nodes ORDER BY last_seen DESC');
+    return $st->fetchAll();
+}
+
 // ---- agent identity ----
 
 // All known PCs = static rm_agents() merged with auto-enrolled agents (registry).

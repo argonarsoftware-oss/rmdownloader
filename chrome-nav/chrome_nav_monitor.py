@@ -36,6 +36,7 @@ import signal
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from datetime import datetime
 from urllib.parse import urlparse
@@ -287,10 +288,215 @@ class CDPClient(object):
 
 
 # --------------------------------------------------------------------------- #
+# Independent mode — reverse-connect reporting + central rules (NO agent needed)
+# --------------------------------------------------------------------------- #
+# With --report-url (or chnav.conf / baked _embed), chnav dials OUT to cdp-node.php on its own:
+# it pushes batched nav events + status and pulls its blt.txt rules — so it runs on a client PC
+# with nothing else installed (the agent becomes optional). Entirely opt-in; plain monitoring is
+# unchanged when no report URL is configured.
+REPORT_TAGS = {"NAV", "SPA", "DOC", "req", "BLOCK", "WARN", "REPLACE", "REDIRECT"}
+REPORTER = None
+TASK_NAME = "ChromeNavMonitor"
+
+
+def _exe_dir():
+    return os.path.dirname(sys.executable if getattr(sys, "frozen", False) else os.path.abspath(__file__))
+
+
+def _embed(name):
+    """Baked config — build.bat <enroll-key> [report-url] writes _embed.py with REPORT_URL / TOKEN
+    so the exe is zero-config (no .conf file). Returns '' when nothing was baked in."""
+    try:
+        import _embed as e
+        return getattr(e, name, "") or ""
+    except Exception:
+        return ""
+
+
+def get_node_id():
+    """Stable per-machine id (hostname + Windows MachineGuid) — matches the agent's id scheme."""
+    host = platform.node() or "node"
+    guid = ""
+    try:
+        import winreg
+        k = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Cryptography",
+                           0, winreg.KEY_READ | winreg.KEY_WOW64_64KEY)
+        guid = str(winreg.QueryValueEx(k, "MachineGuid")[0]).replace("{", "").replace("}", "")
+        winreg.CloseKey(k)
+    except Exception:
+        pass
+    if not guid:
+        try:
+            f = os.path.join(_exe_dir(), "node.id")
+            if os.path.exists(f):
+                guid = open(f).read().strip()
+            else:
+                import uuid
+                guid = uuid.uuid4().hex
+                open(f, "w").write(guid)
+        except Exception:
+            guid = "node"
+    return (host + "-" + guid).lower()
+
+
+class Reporter(threading.Thread):
+    """Outbound reporting + central rules pull. POSTs batched nav events + status to
+    <url>?action=report and pulls blt.txt from <url>?action=rules when the server's rule
+    version changes. Best-effort: buffers events while offline and retries next cycle."""
+
+    def __init__(self, url, token, node_id, name, port, rules_out, interval, stop):
+        super().__init__(daemon=True)
+        self.url = url.rstrip("/")
+        self.token = token or ""
+        self.node_id = node_id
+        self.name = name or node_id
+        self.port = port
+        self.rules_out = rules_out          # blt.txt path to write pulled rules into (hot-reloaded)
+        self.interval = max(2, int(interval))
+        self.stop = stop
+        self._buf = []
+        self._lock = threading.Lock()
+        self._rules_version = None
+        self._max_buf = 5000
+
+    def add(self, tag, payload):
+        ev = {"ts": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "type": tag,
+              "url": payload or "", "title": ""}
+        with self._lock:
+            self._buf.append(ev)
+            if len(self._buf) > self._max_buf:
+                self._buf = self._buf[-self._max_buf:]
+
+    def _headers(self):
+        return {"X-Node-Token": self.token, "X-Node-Id": self.node_id,
+                "X-Node-Name": self.name, "Content-Type": "application/json"}
+
+    def _status(self):
+        chrome, tabs = "", []
+        try:
+            v = requests.get("http://127.0.0.1:%d/json/version" % self.port, timeout=2).json()
+            chrome = str(v.get("Browser", ""))
+            tj = requests.get("http://127.0.0.1:%d/json" % self.port, timeout=2).json()
+            tabs = [str(t.get("url", "")) + "|" + str(t.get("title", ""))
+                    for t in tj if t.get("type") == "page"]
+        except Exception:
+            pass
+        return chrome, tabs
+
+    def pull_rules(self):
+        if not self.rules_out:
+            return
+        try:
+            r = requests.get(self.url + "?action=rules", headers=self._headers(), timeout=5).json()
+            if r.get("ok"):
+                txt = r.get("rules") or ""
+                with open(self.rules_out, "w", encoding="utf-8") as f:
+                    f.write(txt)
+                self._rules_version = r.get("version")
+                log("info      pulled rules v%s (%d bytes) -> %s" % (r.get("version"), len(txt), self.rules_out))
+        except Exception as e:
+            log("info      rules pull failed: %s" % e)
+
+    def run(self):
+        cyc = 0
+        while not self.stop.get("flag"):
+            cyc += 1
+            with self._lock:
+                batch = self._buf
+                self._buf = []
+            chrome, tabs = self._status()
+            body = json.dumps({"events": batch, "chrome": chrome, "tabs": tabs, "running": True})
+            try:
+                resp = requests.post(self.url + "?action=report", headers=self._headers(),
+                                     data=body, timeout=8).json()
+                if resp.get("ok"):
+                    # Re-pull on version change, OR periodically (~every 20 cycles) as a safety net,
+                    # since per-node versions can collide across the global-default -> node-specific switch.
+                    if resp.get("rules_version") != self._rules_version or cyc % 20 == 0:
+                        self.pull_rules()
+                else:
+                    with self._lock:
+                        self._buf = (batch + self._buf)[-self._max_buf:]
+            except Exception:
+                with self._lock:
+                    self._buf = (batch + self._buf)[-self._max_buf:]   # offline -> keep, retry
+            for _ in range(self.interval):
+                if self.stop.get("flag"):
+                    break
+                time.sleep(1)
+
+
+def _xml_escape(s):
+    return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
+
+
+_TASK_XML = """<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo><Description>Chrome Navigation Monitor (independent)</Description></RegistrationInfo>
+  <Triggers><BootTrigger><Enabled>true</Enabled></BootTrigger></Triggers>
+  <Principals><Principal id="Author"><UserId>S-1-5-18</UserId><RunLevel>HighestAvailable</RunLevel></Principal></Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <AllowHardTerminate>true</AllowHardTerminate>
+    <StartWhenAvailable>true</StartWhenAvailable>
+    <RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>
+    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+    <Hidden>true</Hidden>
+    <Enabled>true</Enabled>
+    <RestartOnFailure><Interval>PT1M</Interval><Count>999</Count></RestartOnFailure>
+  </Settings>
+  <Actions Context="Author"><Exec><Command>%(cmd)s</Command><Arguments>%(args)s</Arguments></Exec></Actions>
+</Task>"""
+
+
+def _q(s):
+    return '"' + str(s).replace('"', '') + '"'
+
+
+def install_task(report_url, token, port):
+    """Self-install a hidden SYSTEM boot task that runs `chnav --persist` independently. Config is
+    BAKED into the exe (build.bat <enroll-key> <report-url>) — NO config file. If instead you pass
+    --report-url/--node-token to --install on an un-baked exe, they go into the task's arguments."""
+    if not getattr(sys, "frozen", False):
+        log("--install only works from the built chnav.exe")
+        return 1
+    a = "--persist"
+    if report_url and not _embed("REPORT_URL"):     # not baked -> carry config in the task args
+        a += " --report-url " + _q(report_url) + " --node-token " + _q(token or "")
+        if port and port != 9222:
+            a += " --port %d" % port
+    tmp = os.path.join(tempfile.gettempdir(), "chnav_task.xml")
+    with open(tmp, "w", encoding="utf-16") as f:
+        f.write(_TASK_XML % {"cmd": _xml_escape(sys.executable), "args": _xml_escape(a)})
+    rc = subprocess.call(["schtasks", "/create", "/tn", TASK_NAME, "/xml", tmp, "/f"], creationflags=0x08000000)
+    try:
+        os.remove(tmp)
+    except Exception:
+        pass
+    log("boot task installed (SYSTEM)" if rc == 0 else "schtasks failed (%d)" % rc)
+    return 0
+
+
+def uninstall_task():
+    subprocess.call(["schtasks", "/end", "/tn", TASK_NAME], creationflags=0x08000000)
+    subprocess.call(["schtasks", "/delete", "/tn", TASK_NAME, "/f"], creationflags=0x08000000)
+    log("boot task removed")
+    return 0
+
+
+# --------------------------------------------------------------------------- #
 # Logging + monitor event handling
 # --------------------------------------------------------------------------- #
 def log(msg):
     print("[%s] %s" % (datetime.now().strftime("%H:%M:%S"), msg), flush=True)
+    # Independent mode: forward known event lines ("TAG  payload") to the reporter.
+    r = REPORTER
+    if r is not None:
+        parts = msg.split(None, 1)
+        if parts and parts[0] in REPORT_TAGS:
+            r.add(parts[0], parts[1].strip() if len(parts) > 1 else "")
 
 
 def handle_event(method, params, show_requests):
@@ -684,7 +890,28 @@ def main():
                         help="Always-on enforcement: keep re-seizing Chrome — relaunch the "
                              "regulated instance whenever it's closed, and kill any Chrome that "
                              "isn't the regulated (debug) instance, so the rules can't be escaped.")
+    # Independent mode (no agent needed): reverse-connect to cdp-node.php for events + rules.
+    parser.add_argument("--report-url", metavar="URL",
+                        help="Reverse-connect to this cdp-node.php URL to push nav events + status "
+                             "and pull blt.txt rules — runs without the agent.")
+    parser.add_argument("--node-token", default="", help="Shared ENROLL_KEY for --report-url auth.")
+    parser.add_argument("--node-id", default="", help="Override the machine node id (default: auto).")
+    parser.add_argument("--node-name", default="", help="Override the display name (default: hostname).")
+    parser.add_argument("--report-interval", type=int, default=5, help="Seconds between report POSTs.")
+    parser.add_argument("--install", action="store_true",
+                        help="Install a hidden SYSTEM boot task running 'chnav --persist' + write chnav.conf.")
+    parser.add_argument("--uninstall", action="store_true", help="Remove the boot task.")
     args = parser.parse_args()
+
+    if args.uninstall:
+        return uninstall_task()
+
+    # Config precedence for independent mode: CLI args > config BAKED into the exe (build.bat). No .conf.
+    report_url = args.report_url or _embed("REPORT_URL")
+    token = args.node_token or _embed("TOKEN")
+
+    if args.install:
+        return install_task(report_url, token, args.port)
 
     rules = None
     if args.block or args.block_page:
@@ -696,6 +923,25 @@ def main():
     def on_sigint(signum, frame):
         stop["flag"] = True
     signal.signal(signal.SIGINT, on_sigint)
+
+    # Independent mode: regulate from centrally-pulled rules and report events outbound.
+    if report_url:
+        global REPORTER
+        if not args.block:
+            args.block = os.path.join(_exe_dir(), "blt.txt")
+            if not os.path.exists(args.block):
+                try:
+                    open(args.block, "a").close()
+                except Exception:
+                    pass
+            rules = RuleSet(args.block, args.block_page)
+            regulate = True
+        REPORTER = Reporter(report_url, token, args.node_id or get_node_id(),
+                            args.node_name or platform.node(), args.port, args.block,
+                            args.report_interval, stop)
+        REPORTER.pull_rules()      # initial pull so rules exist before Chrome starts
+        REPORTER.start()
+        log("info      independent mode -> %s as %s" % (report_url, REPORTER.node_id))
 
     if args.persist:
         return run_persistent(args, rules, regulate, stop)

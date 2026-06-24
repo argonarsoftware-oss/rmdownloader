@@ -24,6 +24,7 @@ $cdpPort = defined('CDP_PORT') ? CDP_PORT : 9222;
   <div class="spacer"></div>
   <a class="btn ghost" href="index.php">🗂 Files</a>
   <a class="btn ghost" href="dns.php">🌐 DNS</a>
+  <a class="btn ghost" href="cdp-nodes.php">🧭 CDP Nodes</a>
   <a class="btn ghost" href="terminal.php">💻 Terminal</a>
   <a class="btn ghost" href="logout.php">Sign out</a>
 </header>

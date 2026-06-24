@@ -7,3 +7,9 @@ __pycache__/
 # Ship the compiled tool exe (see CLAUDE.md "Compiled tool exes ARE committed"):
 dist/*
 !dist/chnav.exe
+# Independent-mode baked config — NEVER commit (holds the enroll secret); runtime state:
+_embed.py
+node.id
+blt.txt
+nav.log
+nav.err

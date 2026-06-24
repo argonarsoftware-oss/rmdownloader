@@ -223,6 +223,28 @@ of the domain (e.g. the real domain is `em777w9.cc`, NOT `10em777w9.cc` which do
 covers `www.em777w9.cc`). Deploy target on the test PC: `G:\Game Menu\chnav.exe` (set the CDP page's folder field to
 `G:\Game Menu`, or `CDP_DIR`).
 
+## CDP independent nodes (chnav WITHOUT the agent) — `cdp-node.php` + `cdp-log.php` + `cdp-nodes.php`
+A second way to run chnav: as its **own reverse-connecting client**, so a client PC needs **only
+chnav.exe** (no agent). Opt-in via config **baked into the exe** (`build.bat <enroll-key> [report-url]`
+→ `_embed.py`, git-ignored — zero-config single exe, NO `.conf` file) or via `--report-url`/`--node-token`
+args. chnav then:
+- **pushes** batched nav events + status (chrome version, tabs, running) **outbound** to
+  `cdp-node.php?action=report` → stored in MySQL (`cdp_events`, `cdp_nodes`); auth = shared
+  `ENROLL_KEY` (`X-Node-Token`) + machine id (`X-Node-Id`), same trust model as agent auto-enroll.
+- **pulls** its rules from `cdp-node.php?action=rules` (per-node row in `cdp_rules`, falls back to a
+  global `*` default), writes `blt.txt`, and the existing `RuleSet` hot-reloads it. Re-pulls on a
+  version change or periodically (per-node versions can collide on the global→specific switch).
+- **self-installs** a hidden SYSTEM boot task `ChromeNavMonitor` (`chnav.exe --install`, runs
+  `--persist`); `--uninstall` removes it. `Reporter` (a daemon thread) does all of this; it's
+  entirely opt-in — with no report URL, chnav behaves exactly as the agent-driven monitor.
+- **Web side:** `cdp-log.php` (login/API_KEY) reads `nodes`/`feed`/`rules` and saves rules from
+  MySQL; `cdp-nodes.php` + `assets/cdp-nodes.js` is the page (node picker, status/tabs, blt.txt rules
+  editor → `cdp_rules`, live nav feed with GL badges). Schema: `cdp-schema.sql` (import once + GRANT
+  the app user). **The committed `dist/chnav.exe` is the UN-BAKED build** (no secret); a baked
+  zero-config build (`build.bat <enroll-key> [report-url]` → `_embed.py`, git-ignored) is **never
+  committed** — same rule as the agent exes. Contrast with the agent-driven CDP page (`cdp.php`),
+  which still drives chnav through the agent's `exec` op; both models coexist.
+
 ## DNS subsystem (TinyDNS) — `dns/` + `website/dns.php` + `assets/dns.js`
 A second feature reusing the same agent: a network-wide DNS server on a chosen PC, managed from the
 browser. Three parts:
