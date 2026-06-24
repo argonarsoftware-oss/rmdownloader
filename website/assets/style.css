@@ -217,6 +217,12 @@ tr:hover .row-act{visibility:visible}
   padding:9px 11px;border-radius:var(--radius-sm);outline:none;font:13px/1.4 ui-monospace,Consolas,Menlo,monospace;box-shadow:none}
 .term-input input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-ring)}
 
+/* ---- full-page terminal (terminal.php) ---- */
+.term-body{height:100vh;display:flex;flex-direction:column;overflow:hidden}
+.term-shell{flex:1;min-height:0;display:flex;flex-direction:column;margin:18px 22px;
+  background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow-sm)}
+.term-shell .term-out{flex:1;min-height:0}
+
 /* ---- save toast ---- */
 .toast{position:fixed;left:50%;top:-60px;transform:translateX(-50%);z-index:60;
   min-width:220px;max-width:80vw;padding:12px 17px;border-radius:var(--radius-sm);font-size:13.5px;font-weight:500;
