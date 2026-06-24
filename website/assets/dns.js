@@ -252,6 +252,15 @@ function loadMore() {
   });
 }
 
+// "2026-06-24 13:20:56" (box-local) -> "Jun 24 at 1:20:56pm". Parsed by string so no TZ shifting.
+var MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+function fmtTs(s) {
+  var m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/.exec(String(s || ''));
+  if (!m) return s || '';
+  var h = +m[4], ap = h < 12 ? 'am' : 'pm', h12 = h % 12 || 12;
+  return (MON[(+m[2]) - 1] || m[2]) + ' ' + (+m[3]) + ' at ' + h12 + ':' + m[5] + (m[6] ? ':' + m[6] : '') + ap;
+}
+
 function renderLog() {
   var tbody = document.getElementById('logRows');
   // DB rows arrive already server-filtered; in file mode filter the tail client-side.
@@ -263,7 +272,7 @@ function renderLog() {
     if (f && (r.join(' ')).toLowerCase().indexOf(f) === -1) continue;
     var disp = r[4] || '';
     var cls = /BLOCKED/.test(disp) ? 'd-block' : (/NXDOMAIN/.test(disp) ? 'd-nx' : (/^LOCAL/.test(disp) ? 'd-local' : 'd-fwd'));
-    rows += '<tr><td class="l-time">' + esc(r[0] || '') + '</td><td class="l-client">' + esc(r[1] || '') +
+    rows += '<tr><td class="l-time">' + esc(fmtTs(r[0])) + '</td><td class="l-client">' + esc(r[1] || '') +
       '</td><td>' + esc(r[2] || '') + '</td><td class="l-type">' + esc(r[3] || '') +
       '</td><td class="l-disp ' + cls + '">' + esc(disp) + '</td></tr>';
     shown++;
