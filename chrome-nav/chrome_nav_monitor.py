@@ -987,7 +987,7 @@ def run_browser(args, info, rules, stop):
         log("Browser-level %s. Press Ctrl+C to stop." % mode)
         log("-" * 60)
         next_reload = time.time() + 2
-        next_check = time.time() + 4
+        next_check = time.time() + 2
         next_sweep = time.time() + 3
         devtools_misses = 0
         while not stop["flag"]:
@@ -1008,7 +1008,7 @@ def run_browser(args, info, rules, stop):
                     # While regulating (guard or persist): kill any Chrome that isn't our instance.
                     if getattr(args, "kill_foreign", False):
                         kill_foreign_chrome(args.port)
-                next_check = now + 4
+                next_check = now + 2
             # Keep detecting ruled domains and redirect them, even if an event was missed.
             if rules and now >= next_sweep:
                 _sweep_redirect(client, args.port, rules, sessions, pending)
