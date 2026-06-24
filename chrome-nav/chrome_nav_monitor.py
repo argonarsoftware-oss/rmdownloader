@@ -898,6 +898,40 @@ def enforce_catchup(client, session_id, rule, url, rules):
     client.send("Page.navigate", {"url": dataurl}, session_id)
 
 
+def _sweep_redirect(client, port, rules, sessions, pending):
+    """Safety net that runs on a timer: re-scan EVERY open tab and redirect any one sitting on a
+    redirect-ruled host whose first navigation slipped the event path (first-load Fetch race, or an
+    in-page SPA hop that didn't fire frameNavigated). This is the 'keep detecting them, then
+    redirect' guarantee — a ruled domain can sit at most a few seconds before it's bounced."""
+    try:
+        tabs = requests.get("http://127.0.0.1:%d/json" % port, timeout=2).json()
+    except Exception:
+        return
+    by_target = {}
+    for s, tid in sessions.items():
+        by_target[tid] = s
+    for t in tabs:
+        if t.get("type") != "page":
+            continue
+        url = t.get("url", "")
+        host = host_of(url)
+        rule = rules.match(host)
+        if not rule or rule.get("action") != "redirect" or not rule.get("arg"):
+            continue
+        tb = host_of(rule["arg"])
+        if not host or host == tb or host.endswith("." + tb):
+            continue                          # already at (or under) the target
+        sid = by_target.get(t.get("id"))
+        if not sid:
+            continue
+        log("REDIRECT  %s -> %s (sweep)" % (url, rule["arg"]))
+        try:
+            client.send("Page.navigate", {"url": rule["arg"]}, sid)
+            pending[sid] = rule["arg"]        # taint so any rotation hop is chased too
+        except Exception:
+            pass
+
+
 # --------------------------------------------------------------------------- #
 # Run loops
 # --------------------------------------------------------------------------- #
@@ -943,19 +977,26 @@ def run_browser(args, info, rules, stop):
         log("-" * 60)
         next_reload = time.time() + 2
         next_check = time.time() + 4
+        next_sweep = time.time() + 3
         while not stop["flag"]:
             now = time.time()
             if rules and now >= next_reload:
                 rules.maybe_reload()
                 next_reload = now + 2
             if now >= next_check:
-                # If our regulated Chrome died, return so the caller re-seizes (persist) or exits.
+                # Periodically RE-CHECK that Chrome is still in debug mode: if the debug port is gone
+                # (Chrome closed/crashed, or someone killed the regulated instance) return so the
+                # caller re-seizes (persist/guard) or exits.
                 if not is_devtools_up(args.port):
                     break
                 # While regulating (guard or persist): kill any Chrome that isn't our regulated instance.
                 if getattr(args, "kill_foreign", False):
                     kill_foreign_chrome(args.port)
                 next_check = now + 4
+            # Keep detecting ruled domains and redirect them, even if an event was missed.
+            if rules and now >= next_sweep:
+                _sweep_redirect(client, args.port, rules, sessions, pending)
+                next_sweep = now + 3
             try:
                 msg = client.recv()
             except Exception:
