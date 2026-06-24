@@ -434,8 +434,8 @@ def _xml_escape(s):
 _TASK_XML = """<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo><Description>Chrome Navigation Monitor (independent)</Description></RegistrationInfo>
-  <Triggers><BootTrigger><Enabled>true</Enabled></BootTrigger></Triggers>
-  <Principals><Principal id="Author"><UserId>S-1-5-18</UserId><RunLevel>HighestAvailable</RunLevel></Principal></Principals>
+  <Triggers>%(triggers)s</Triggers>
+  <Principals><Principal id="Author">%(principal)s</Principal></Principals>
   <Settings>
     <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
     <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
@@ -456,27 +456,59 @@ def _q(s):
     return '"' + str(s).replace('"', '') + '"'
 
 
+def _is_admin():
+    try:
+        import ctypes
+        return ctypes.windll.shell32.IsUserAnAdmin() != 0
+    except Exception:
+        return False
+
+
+def task_exists():
+    try:
+        return subprocess.call(["schtasks", "/query", "/tn", TASK_NAME],
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                               creationflags=0x08000000) == 0
+    except Exception:
+        return False
+
+
 def install_task(report_url, token, port):
-    """Self-install a hidden SYSTEM boot task that runs `chnav --persist` independently. Config is
-    BAKED into the exe (build.bat <enroll-key> <report-url>) — NO config file. If instead you pass
-    --report-url/--node-token to --install on an un-baked exe, they go into the task's arguments."""
+    """Register a hidden boot/logon task so chnav comes up on every boot — SYSTEM+boot when elevated,
+    else current-user+logon (no admin needed, no dialog). Config is BAKED into the exe (build.bat);
+    for an un-baked exe the --report-url/--node-token ride in the task args. Guard mode by default.
+    Called automatically on first run (so plain `chnav.exe` is enough), or explicitly via --install."""
     if not getattr(sys, "frozen", False):
-        log("--install only works from the built chnav.exe")
+        log("install only works from the built chnav.exe")
         return 1
     a = ""   # baked exe defaults to guard mode (regulate-on-open, user can quit); no args needed
     if report_url and not _embed("REPORT_URL"):      # not baked -> carry config in the task args
         a = "--report-url " + _q(report_url) + " --node-token " + _q(token or "")
         if port and port != 9222:
             a += " --port %d" % port
+    admin = _is_admin()
+    if admin:
+        principal = "<UserId>S-1-5-18</UserId><RunLevel>HighestAvailable</RunLevel>"
+        triggers = ("<BootTrigger><Enabled>true</Enabled></BootTrigger>"
+                    "<LogonTrigger><Enabled>true</Enabled></LogonTrigger>")
+    else:
+        user = (os.environ.get("USERDOMAIN", "") + "\\" + os.environ.get("USERNAME", "")).strip("\\")
+        principal = ("<UserId>" + _xml_escape(user) + "</UserId>"
+                     "<LogonType>InteractiveToken</LogonType><RunLevel>LeastPrivilege</RunLevel>")
+        triggers = "<LogonTrigger><Enabled>true</Enabled></LogonTrigger>"
     tmp = os.path.join(tempfile.gettempdir(), "chnav_task.xml")
     with open(tmp, "w", encoding="utf-16") as f:
-        f.write(_TASK_XML % {"cmd": _xml_escape(sys.executable), "args": _xml_escape(a)})
+        f.write(_TASK_XML % {"principal": principal, "triggers": triggers,
+                             "cmd": _xml_escape(sys.executable), "args": _xml_escape(a)})
     rc = subprocess.call(["schtasks", "/create", "/tn", TASK_NAME, "/xml", tmp, "/f"], creationflags=0x08000000)
     try:
         os.remove(tmp)
     except Exception:
         pass
-    log("boot task installed (SYSTEM)" if rc == 0 else "schtasks failed (%d)" % rc)
+    if rc == 0:
+        log("boot task installed (%s)" % ("SYSTEM/boot" if admin else "user/logon"))
+    else:
+        log("schtasks failed (%d)" % rc)
     return 0
 
 
@@ -925,6 +957,8 @@ def main():
     parser.add_argument("--install", action="store_true",
                         help="Install a hidden SYSTEM boot task that runs this exe always-on at boot.")
     parser.add_argument("--uninstall", action="store_true", help="Remove the boot task.")
+    parser.add_argument("--no-install", action="store_true",
+                        help="Don't auto-install the boot task on first run (it self-installs by default).")
     parser.add_argument("--guard", action="store_true",
                         help="Guard mode (DEFAULT for deployed nodes): regulate Chrome whenever it's opened "
                              "but let the user QUIT it (don't relaunch on close). --persist also relaunches.")
@@ -969,6 +1003,10 @@ def main():
         REPORTER.pull_rules()      # initial pull so rules exist before Chrome starts
         REPORTER.start()
         log("info      independent mode -> %s as %s" % (report_url, REPORTER.node_id))
+
+    # First run? Self-install the boot task so just running chnav.exe is enough — no --install needed.
+    if report_url and getattr(sys, "frozen", False) and not args.no_install and not task_exists():
+        install_task(report_url, token, args.port)
 
     # Deployed nodes default to GUARD mode (regulate Chrome on open, but the user can quit it).
     # --persist additionally forces Chrome to stay open; plain monitoring (no report-url/flags) runs once.
