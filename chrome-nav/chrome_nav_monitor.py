@@ -102,7 +102,8 @@ def kill_chrome():
     if system == "Windows":
         # /T also kills child processes (renderers, GPU, etc.)
         subprocess.run(["taskkill", "/F", "/T", "/IM", "chrome.exe"],
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                       creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         proc_names = ["chrome.exe"]
         running = lambda: _windows_chrome_running(proc_names)
     else:
@@ -124,7 +125,8 @@ def kill_chrome():
 def _windows_chrome_running(names):
     try:
         out = subprocess.run(["tasklist", "/FI", "IMAGENAME eq chrome.exe"],
-                             capture_output=True, text=True).stdout.lower()
+                             capture_output=True, text=True,
+                             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).stdout.lower()
         return "chrome.exe" in out
     except Exception:
         return False
