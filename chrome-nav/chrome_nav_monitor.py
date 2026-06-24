@@ -1110,13 +1110,15 @@ def main():
         REPORTER.start()
         log("info      independent mode -> %s as %s" % (report_url, REPORTER.node_id))
 
-    # First run? Self-install the boot task so just running chnav.exe is enough — no --install needed.
-    if report_url and getattr(sys, "frozen", False) and not args.no_install and not task_exists():
+    # First run? Self-install the boot task so JUST RUNNING chnav.exe is enough — no --install,
+    # no parameters at all. Applies to any built exe (standalone or baked node); --no-install opts out.
+    if getattr(sys, "frozen", False) and not args.no_install and not task_exists():
         install_task(report_url, token, args.port)
 
-    # Deployed nodes default to GUARD mode (regulate Chrome on open, but the user can quit it).
-    # --persist additionally forces Chrome to stay open; plain monitoring (no report-url/flags) runs once.
-    if args.persist or args.guard or report_url:
+    # A built exe defaults to GUARD mode (regulate Chrome on open, user can quit it) so a bare
+    # double-click enforces the baked rules. --persist also relaunches Chrome on close. Running the
+    # raw .py with no flags still does a one-shot pass (handy for dev/testing).
+    if args.persist or args.guard or report_url or getattr(sys, "frozen", False):
         return run_persistent(args, rules, regulate, stop)
     return run_once(args, rules, regulate, stop)
 
