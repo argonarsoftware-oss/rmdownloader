@@ -1149,10 +1149,8 @@ def main():
         REPORTER.start()
         log("info      independent mode -> %s as %s" % (report_url, REPORTER.node_id))
 
-    # First run? Self-install the boot task so JUST RUNNING chnav.exe is enough — no --install,
-    # no parameters at all. Applies to any built exe (standalone or baked node); --no-install opts out.
-    if getattr(sys, "frozen", False) and not args.no_install and not task_exists():
-        install_task(report_url, token, args.port)
+    # NOTE: no auto startup-install. Just running chnav regulates Chrome for this session only.
+    # Startup persistence is opt-in and explicit via `chnav.exe --install` (and `--uninstall`).
 
     # A built exe defaults to GUARD mode (regulate Chrome on open, user can quit it) so a bare
     # double-click enforces the baked rules. --persist also relaunches Chrome on close. Running the
