@@ -69,15 +69,17 @@ try {
         if ($q !== '') { $w .= ' AND domain LIKE ?'; $a[] = '%' . $q . '%'; }
         if ($days > 0) { $w .= ' AND day >= (CURDATE() - INTERVAL ' . (int)$days . ' DAY)'; }
 
-        // Pull per-domain sums and fold into base domains (collapse subdomains) in PHP.
-        $st = $pdo->prepare('SELECT domain, SUM(hits) h FROM dns_stats_daily WHERE ' . $w
+        // Pull per-domain sums (+ last-seen day) and fold into base domains (collapse subdomains) in PHP.
+        $st = $pdo->prepare('SELECT domain, SUM(hits) h, MAX(day) d FROM dns_stats_daily WHERE ' . $w
                           . ' GROUP BY domain ORDER BY h DESC LIMIT 10000');
         $st->execute($a);
         $map = array();
+        $last = array();   // base key -> latest day seen (DATE strings sort lexically)
         while ($row = $st->fetch()) {
             $key = ($group === 'base') ? registrable_domain($row['domain']) : $row['domain'];
-            if (!isset($map[$key])) $map[$key] = 0;
+            if (!isset($map[$key])) { $map[$key] = 0; $last[$key] = ''; }
             $map[$key] += (int)$row['h'];
+            if ($row['d'] > $last[$key]) $last[$key] = $row['d'];
         }
         arsort($map);
 
@@ -94,7 +96,8 @@ try {
         arsort($gSites);
         $gList = array();
         $j = 0;
-        foreach ($gSites as $d => $h) { $gList[] = array($d, $h); if (++$j >= 20) break; }
+        // 3rd element = last-seen day (DATE) so the UI can stamp each site (older UIs ignore it).
+        foreach ($gSites as $d => $h) { $gList[] = array($d, $h, isset($last[$d]) ? $last[$d] : ''); if (++$j >= 20) break; }
 
         $st = $pdo->prepare('SELECT COALESCE(SUM(hits),0) FROM dns_stats_daily WHERE ' . $w);
         $st->execute($a);

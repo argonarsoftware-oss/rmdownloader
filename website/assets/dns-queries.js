@@ -26,6 +26,11 @@ function fmtTs(s) {
   var h = +m[4], ap = h < 12 ? 'am' : 'pm', h12 = h % 12 || 12;
   return (MON[(+m[2]) - 1] || m[2]) + ' ' + (+m[3]) + ' at ' + h12 + ':' + m[5] + (m[6] ? ':' + m[6] : '') + ap;
 }
+// bare "2026-06-24" -> "Jun 24" (last-seen day for the gambling banner; rollup is day-granular)
+function fmtDay(s) {
+  var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(s || ''));
+  return m ? ((MON[(+m[2]) - 1] || m[2]) + ' ' + (+m[3])) : '';
+}
 
 var agentSel = document.getElementById('agentSel');
 function fil() { return document.getElementById('qFilter').value.trim(); }
@@ -48,7 +53,9 @@ function renderGamblingAlert(g) {
   if (!el) return;
   g = g || { count: 0, visits: 0, sites: [] };
   if (g.count > 0) {
-    var names = (g.sites || []).map(function (s) { return esc(s[0]); });
+    var names = (g.sites || []).map(function (s) {
+      var d = fmtDay(s[2]); return esc(s[0]) + (d ? ' <span class="muted">(' + d + ')</span>' : '');
+    });
     var shown = names.slice(0, 8).join(', ');
     if (names.length > 8) shown += ', +' + (names.length - 8) + ' more';
     el.className = 'alert warn';

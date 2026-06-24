@@ -64,10 +64,10 @@ if ($pdo) {
         $w = 'agent_id = ?'; $a = array($id);
         if ($days > 0) { $w .= ' AND day >= (CURDATE() - INTERVAL ' . (int)$days . ' DAY)'; }
         // fold subdomains into registrable domains, flag gambling
-        $st = $pdo->prepare('SELECT domain, SUM(hits) h FROM dns_stats_daily WHERE ' . $w . ' GROUP BY domain ORDER BY h DESC LIMIT 10000');
+        $st = $pdo->prepare('SELECT domain, SUM(hits) h, MAX(day) d FROM dns_stats_daily WHERE ' . $w . ' GROUP BY domain ORDER BY h DESC LIMIT 10000');
         $st->execute($a);
-        $map = array();
-        while ($r = $st->fetch()) { $b = registrable_domain($r['domain']); if (!isset($map[$b])) $map[$b] = 0; $map[$b] += (int)$r['h']; }
+        $map = array(); $last = array();
+        while ($r = $st->fetch()) { $b = registrable_domain($r['domain']); if (!isset($map[$b])) { $map[$b] = 0; $last[$b] = ''; } $map[$b] += (int)$r['h']; if ($r['d'] > $last[$b]) $last[$b] = $r['d']; }
         arsort($map);
         $i = 0; $gSites = array();
         foreach ($map as $dom => $h) {
@@ -77,7 +77,8 @@ if ($pdo) {
         }
         arsort($gSites);
         $gambling['count'] = count($gSites);
-        $j = 0; foreach ($gSites as $d => $h) { $gambling['sites'][] = array($d, $h); if (++$j >= 20) break; }
+        // 3rd element = last-seen day (DATE) so the report can stamp each site.
+        $j = 0; foreach ($gSites as $d => $h) { $gambling['sites'][] = array($d, $h, isset($last[$d]) ? $last[$d] : ''); if (++$j >= 20) break; }
         $st = $pdo->prepare('SELECT COALESCE(SUM(hits),0) FROM dns_stats_daily WHERE ' . $w);
         $st->execute($a);
         $totalVisits = (int)$st->fetchColumn();
@@ -121,7 +122,7 @@ if (!empty($box['ips'])) {
 $L[] = '';
 if ($dbOn && $gambling['count'] > 0) {
     $gnames = array();
-    foreach ($gambling['sites'] as $s) $gnames[] = $s[0];
+    foreach ($gambling['sites'] as $s) $gnames[] = $s[0] . (isset($s[2]) && $s[2] !== '' ? ' (' . $s[2] . ')' : '');
     $L[] = '!! GAMBLING ALERT: ' . $gambling['count'] . ' site(s), ' . number_format($gambling['visits'])
          . ' visits — ' . implode(', ', array_slice($gnames, 0, 10)) . (count($gnames) > 10 ? ', …' : '');
     $L[] = '';
