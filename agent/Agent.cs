@@ -32,7 +32,7 @@ class Agent
     //   * new web app + old agent  -> web checks caps / handles {unknown_op:true}, degrades.
     //   * new agent + old web app  -> extra result fields (label/version/caps) are ignored.
     //   * known ops never change meaning; new args are optional; new result fields are optional.
-    const string AGENT_VERSION = "2026.06.21";   // date-based (YYYY.MM.DD); bump on each build with new behavior
+    const string AGENT_VERSION = "2026.06.24";   // date-based (YYYY.MM.DD); bump on each build with new behavior
     static readonly string[] CAPS = new string[] {
         "info", "list", "read", "download", "write", "mkdir", "delete", "rename", "exec",
         "drive-label", "version", "update"
@@ -394,8 +394,12 @@ class Agent
             }
             else
             {
+                // A bare `cd X:\path` in cmd does NOT change the active drive (cmd needs `cd /d`),
+                // so across our fresh-process-per-command model the drive change is lost and the
+                // terminal snaps back to C:. Transparently add /d so switching drives sticks.
+                string userCmd = CmdDriveAwareCd(command);
                 // cd into the persisted dir, run the command, print marker+exit, then the new cwd.
-                string inner = "cd /d \"" + cwd + "\" & " + command + " & echo " + mark + "!errorlevel! & cd";
+                string inner = "cd /d \"" + cwd + "\" & " + userCmd + " & echo " + mark + "!errorlevel! & cd";
                 psi = new ProcessStartInfo("cmd.exe", "/v:on /c \"" + inner + "\"");
             }
             psi.UseShellExecute = false;
@@ -445,6 +449,24 @@ class Agent
             r["shell"] = shell;
             return r;
         }
+    }
+
+    // Make `cd <path>` / `chdir <path>` cross-drive in the stateful cmd terminal by injecting /d.
+    // Only rewrites a LEADING cd/chdir that has an argument and isn't already using /d. Leaves
+    // `cd` (print dir), `cd..`, `cd\`, already-`/d` forms, and non-cd commands untouched.
+    static string CmdDriveAwareCd(string command)
+    {
+        if (string.IsNullOrEmpty(command)) return command;
+        string trimmed = command.TrimStart();
+        int lead = command.Length - trimmed.Length;
+        var m = System.Text.RegularExpressions.Regex.Match(
+            trimmed, @"^(cd|chdir)(\s+)(.*)$",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (!m.Success) return command;                                  // bare `cd`, `cd..`, `cd\`, or not cd
+        string rest = m.Groups[3].Value.TrimStart();
+        if (rest.Length == 0) return command;                            // `cd   ` -> print dir
+        if (rest.StartsWith("/d", StringComparison.OrdinalIgnoreCase)) return command;  // already /d
+        return command.Substring(0, lead) + m.Groups[1].Value + " /d " + m.Groups[3].Value;
     }
 
     // Stage a new worker exe for the supervisor to swap in. The web sends the new Agent.exe
