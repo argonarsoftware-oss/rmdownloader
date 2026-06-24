@@ -63,6 +63,13 @@ function exec_authorized() {
     return false;
 }
 
+// Unauthenticated IP echo (HTTP 200) so a caller can discover the address this server sees for it
+// — the value to put in EXEC_ALLOW_IPS. Reveals only the caller's OWN IP; runs nothing.
+if (isset($_REQUEST['whoami'])) {
+    echo "caller-ip: " . exec_client_ip() . "\n";
+    exit;
+}
+
 if (!exec_authorized()) {
     http_response_code(401);
     echo "unauthorized.\n";
