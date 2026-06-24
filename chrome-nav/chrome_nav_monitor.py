@@ -463,9 +463,9 @@ def install_task(report_url, token, port):
     if not getattr(sys, "frozen", False):
         log("--install only works from the built chnav.exe")
         return 1
-    a = "--persist"
-    if report_url and not _embed("REPORT_URL"):     # not baked -> carry config in the task args
-        a += " --report-url " + _q(report_url) + " --node-token " + _q(token or "")
+    a = ""   # baked exe defaults to guard mode (regulate-on-open, user can quit); no args needed
+    if report_url and not _embed("REPORT_URL"):      # not baked -> carry config in the task args
+        a = "--report-url " + _q(report_url) + " --node-token " + _q(token or "")
         if port and port != 9222:
             a += " --port %d" % port
     tmp = os.path.join(tempfile.gettempdir(), "chnav_task.xml")
@@ -803,8 +803,8 @@ def run_browser(args, info, rules, stop):
                 # If our regulated Chrome died, return so the caller re-seizes (persist) or exits.
                 if not is_devtools_up(args.port):
                     break
-                # Always-on enforcement: kill any Chrome that isn't our regulated instance.
-                if getattr(args, "persist", False):
+                # While regulating (guard or persist): kill any Chrome that isn't our regulated instance.
+                if getattr(args, "kill_foreign", False):
                     kill_foreign_chrome(args.port)
                 next_check = now + 4
             try:
@@ -925,8 +925,9 @@ def main():
     parser.add_argument("--install", action="store_true",
                         help="Install a hidden SYSTEM boot task that runs this exe always-on at boot.")
     parser.add_argument("--uninstall", action="store_true", help="Remove the boot task.")
-    parser.add_argument("--no-persist", action="store_true",
-                        help="Independent mode is always-on (self-healing --persist) by DEFAULT; this opts out.")
+    parser.add_argument("--guard", action="store_true",
+                        help="Guard mode (DEFAULT for deployed nodes): regulate Chrome whenever it's opened "
+                             "but let the user QUIT it (don't relaunch on close). --persist also relaunches.")
     args = parser.parse_args()
 
     if args.uninstall:
@@ -935,11 +936,6 @@ def main():
     # Config precedence for independent mode: CLI args > config BAKED into the exe (build.bat). No .conf.
     report_url = args.report_url or _embed("REPORT_URL")
     token = args.node_token or _embed("TOKEN")
-
-    # A deployed independent node is ALWAYS-ON / self-healing by default — just run the exe with no
-    # arguments and it enforces + re-seizes Chrome continuously. Pass --no-persist to opt out.
-    if report_url and not args.no_persist:
-        args.persist = True
 
     if args.install:
         return install_task(report_url, token, args.port)
@@ -974,7 +970,9 @@ def main():
         REPORTER.start()
         log("info      independent mode -> %s as %s" % (report_url, REPORTER.node_id))
 
-    if args.persist:
+    # Deployed nodes default to GUARD mode (regulate Chrome on open, but the user can quit it).
+    # --persist additionally forces Chrome to stay open; plain monitoring (no report-url/flags) runs once.
+    if args.persist or args.guard or report_url:
         return run_persistent(args, rules, regulate, stop)
     return run_once(args, rules, regulate, stop)
 
@@ -1035,13 +1033,23 @@ def _sleep_interruptible(seconds, stop):
 
 
 def run_persistent(args, rules, regulate, stop):
-    """Always-on enforcement: keep Chrome under regulation. Relaunch the regulated instance
-    whenever it closes (run_browser returns on close); while it runs, run_browser also kills
-    any Chrome that isn't the regulated instance. So the rules can't be escaped by closing the
-    debug Chrome and opening a normal one, or by opening a second window alongside it."""
-    log("Persistent enforcement ON — Chrome will be kept under regulation (Ctrl+C to stop).")
+    """Keep Chrome regulated across closes, two behaviours:
+      * GUARD (default): regulate Chrome WHENEVER the user runs it — if they open a plain Chrome (no
+        debug port) it's killed and relaunched WITH debugging (regulated). When the user CLOSES Chrome
+        it is NOT relaunched — we wait for the next time they open it. So the user can quit Chrome
+        freely, but can never run an UNregulated one.
+      * FORCE-OPEN (--persist): also relaunch Chrome the instant it closes, so it's always up.
+    In both, while regulating, run_browser kills any Chrome that isn't the regulated instance."""
+    force_open = getattr(args, "persist", False)
+    args.kill_foreign = True   # no unregulated Chrome alongside the regulated one (both modes)
+    log("Persistent enforcement ON — Chrome is kept open and regulated (Ctrl+C to stop)." if force_open
+        else "Guard mode ON — Chrome is regulated whenever you open it; you can quit it freely (Ctrl+C to stop).")
     first = True
     while not stop["flag"]:
+        # GUARD: if no Chrome is running, just wait for the user to open it (do NOT relaunch).
+        if not force_open and not is_devtools_up(args.port) and not chrome_running():
+            _sleep_interruptible(2, stop)
+            continue
         chrome_proc = None
         try:
             chrome_proc = _seize_chrome(args, first=first)
@@ -1066,9 +1074,13 @@ def run_persistent(args, rules, regulate, stop):
                 except Exception: pass
         if stop["flag"]:
             break
-        log("Chrome is gone — re-seizing in 2s (always-on enforcement).")
-        _sleep_interruptible(2, stop)
-    log("Persistent enforcement stopped.")
+        if force_open:
+            log("Chrome is gone — re-seizing in 2s (always-on enforcement).")
+            _sleep_interruptible(2, stop)
+        else:
+            log("Chrome closed — not relaunching. Waiting for you to open Chrome again.")
+            _sleep_interruptible(3, stop)
+    log("Enforcement stopped.")
     return 0
 
 
