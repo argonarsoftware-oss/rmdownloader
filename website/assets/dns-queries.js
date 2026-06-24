@@ -34,9 +34,35 @@ function lim() { return document.getElementById('qLimit').value; }
 function rowHtml(r) {
   var disp = r[4] || '';
   var cls = /BLOCKED/.test(disp) ? 'd-block' : (/NXDOMAIN/.test(disp) ? 'd-nx' : (/^LOCAL/.test(disp) ? 'd-local' : 'd-fwd'));
-  return '<tr><td class="l-time">' + esc(fmtTs(r[0])) + '</td><td class="l-client">' + esc(r[1] || '') +
-    '</td><td>' + esc(r[2] || '') + '</td><td class="l-type">' + esc(r[3] || '') +
+  var gl = r[6] ? 1 : 0;                                  // 7th field = gambling flag (from dns-log.php)
+  var badge = gl ? ' <span class="gtag">🎲 GL</span>' : '';
+  return '<tr' + (gl ? ' class="g-row"' : '') + '><td class="l-time">' + esc(fmtTs(r[0])) + '</td><td class="l-client">' + esc(r[1] || '') +
+    '</td><td>' + esc(r[2] || '') + badge + '</td><td class="l-type">' + esc(r[3] || '') +
     '</td><td class="l-disp ' + cls + '">' + esc(disp) + '</td></tr>';
+}
+
+// Gambling alert banner — same source + wording as the dns.php Top-sites alert (server summary
+// over ALL history, respecting the current filter), so the two pages stay consistent.
+function renderGamblingAlert(g) {
+  var el = document.getElementById('qAlert');
+  if (!el) return;
+  g = g || { count: 0, visits: 0, sites: [] };
+  if (g.count > 0) {
+    var names = (g.sites || []).map(function (s) { return esc(s[0]); });
+    var shown = names.slice(0, 8).join(', ');
+    if (names.length > 8) shown += ', +' + (names.length - 8) + ' more';
+    el.className = 'alert warn';
+    el.innerHTML = '🎲 <b>GL related activity</b> — ' + g.count +
+      ' site(s), ' + (g.visits || 0).toLocaleString() + ' visits: ' + shown;
+    el.hidden = false;
+  } else {
+    el.hidden = true;
+  }
+}
+function loadGamblingAlert() {
+  dnsLog({ action: 'stats', days: 0, q: fil(), group: 'base', limit: 1 }).then(function (d) {
+    if (d && d.ok) renderGamblingAlert(d.gambling);
+  }).catch(function () {});
 }
 function render() {
   document.getElementById('qRows').innerHTML = rows.length
@@ -47,7 +73,7 @@ function render() {
 }
 
 function load(reset) {
-  if (reset) cursor = null;
+  if (reset) { cursor = null; loadGamblingAlert(); }
   var p = { action: 'query', q: fil(), limit: lim() };
   if (!reset && cursor) p.before_id = cursor;
   msg('Loading…');

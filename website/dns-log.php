@@ -125,7 +125,9 @@ try {
     $rows = array();
     $lastId = null;
     while ($row = $st->fetch()) {
-        $rows[] = array($row['ts'], $row['client'], $row['domain'], $row['qtype'], $row['disposition'], (int)$row['id']);
+        // 7th element = gambling flag so the UI can badge/highlight the row (older UIs ignore it).
+        $g = is_gambling_domain($row['domain']) ? 1 : 0;
+        $rows[] = array($row['ts'], $row['client'], $row['domain'], $row['qtype'], $row['disposition'], (int)$row['id'], $g);
         $lastId = (int)$row['id'];
     }
     $next = (count($rows) === $limit) ? $lastId : null;   // cursor for "Load more"

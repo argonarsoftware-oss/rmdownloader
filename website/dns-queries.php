@@ -38,6 +38,7 @@ require_login();
 </div>
 
 <main>
+  <div id="qAlert" class="alert" hidden style="margin:14px 16px 0"></div>
   <div class="log-wrap tall">
     <table class="loglist">
       <thead><tr><th class="l-time">Time</th><th class="l-client">Client</th><th>Domain</th><th class="l-type">Type</th><th class="l-disp">Result</th></tr></thead>

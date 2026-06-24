@@ -175,6 +175,8 @@ tr:hover .row-act{visibility:visible}
 .l-client{width:130px}
 .l-type{width:64px;color:var(--muted)}
 .l-disp{width:160px}
+.loglist tr.g-row td{background:rgba(220,38,38,.06)}
+.loglist tr.g-row:hover td{background:rgba(220,38,38,.11)}
 .d-block{color:var(--danger);font-weight:600}
 .d-nx{color:var(--amber)}
 .d-local{color:var(--green);font-weight:600}
