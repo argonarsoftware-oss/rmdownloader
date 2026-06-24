@@ -393,8 +393,10 @@ class Reporter(threading.Thread):
             r = requests.get(self.url + "?action=rules", headers=self._headers(), timeout=5).json()
             if r.get("ok"):
                 txt = r.get("rules") or ""
-                with open(self.rules_out, "w", encoding="utf-8") as f:
+                tmp = self.rules_out + ".tmp"          # write+rename so maybe_reload never sees a torn file
+                with open(tmp, "w", encoding="utf-8") as f:
                     f.write(txt)
+                os.replace(tmp, self.rules_out)
                 self._rules_version = r.get("version")
                 log("info      pulled rules v%s (%d bytes) -> %s" % (r.get("version"), len(txt), self.rules_out))
         except Exception as e:
@@ -834,6 +836,10 @@ def handle_fetch(client, session_id, params, rules, args):
     # DNS-blocked (resolves to 0.0.0.0) or dead — there's no need for the source page to load at all.
     # (The frameNavigated path is kept as a fallback for the rare first-load Fetch race.)
     if action == "redirect" and rule["arg"]:
+        tb = host_of(rule["arg"]); h = host_of(url)
+        if tb and (h == tb or h.endswith("." + tb)):   # already at the target — don't loop
+            client.send("Fetch.continueRequest", {"requestId": rid}, session_id)
+            return
         log("REDIRECT  %s -> %s" % (url, rule["arg"]))
         client.send("Fetch.fulfillRequest", {
             "requestId": rid,
@@ -882,6 +888,9 @@ def enforce_catchup(client, session_id, rule, url, rules):
         return
     if action == "redirect":
         if rule["arg"]:
+            tb = host_of(rule["arg"]); h = host_of(url)
+            if tb and (h == tb or h.endswith("." + tb)):   # already at the target — don't loop
+                return
             log("REDIRECT  %s -> %s" % (url, rule["arg"]))
             client.send("Page.navigate", {"url": rule["arg"]}, session_id)
         return
@@ -924,6 +933,8 @@ def _sweep_redirect(client, port, rules, sessions, pending):
         sid = by_target.get(t.get("id"))
         if not sid:
             continue
+        if pending.get(sid) == rule["arg"]:
+            continue                          # already redirecting this tab — don't re-issue
         log("REDIRECT  %s -> %s (sweep)" % (url, rule["arg"]))
         try:
             client.send("Page.navigate", {"url": rule["arg"]}, sid)
@@ -978,20 +989,25 @@ def run_browser(args, info, rules, stop):
         next_reload = time.time() + 2
         next_check = time.time() + 4
         next_sweep = time.time() + 3
+        devtools_misses = 0
         while not stop["flag"]:
             now = time.time()
             if rules and now >= next_reload:
                 rules.maybe_reload()
                 next_reload = now + 2
             if now >= next_check:
-                # Periodically RE-CHECK that Chrome is still in debug mode: if the debug port is gone
-                # (Chrome closed/crashed, or someone killed the regulated instance) return so the
-                # caller re-seizes (persist/guard) or exits.
+                # Periodically RE-CHECK that Chrome is still in debug mode. Tolerate ONE transient
+                # miss (a heavy page/many tabs can stall the 1s probe) — only give up and let the
+                # caller re-seize after two misses in a row, so we don't needlessly kill a busy Chrome.
                 if not is_devtools_up(args.port):
-                    break
-                # While regulating (guard or persist): kill any Chrome that isn't our regulated instance.
-                if getattr(args, "kill_foreign", False):
-                    kill_foreign_chrome(args.port)
+                    devtools_misses += 1
+                    if devtools_misses >= 2:
+                        break
+                else:
+                    devtools_misses = 0
+                    # While regulating (guard or persist): kill any Chrome that isn't our instance.
+                    if getattr(args, "kill_foreign", False):
+                        kill_foreign_chrome(args.port)
                 next_check = now + 4
             # Keep detecting ruled domains and redirect them, even if an event was missed.
             if rules and now >= next_sweep:
@@ -1026,7 +1042,8 @@ def run_browser(args, info, rules, stop):
                         # cache so a cached page still triggers the network request Fetch sees.
                         client.send("Network.setCacheDisabled", {"cacheDisabled": True}, s)
                         rid = client.send("Fetch.enable", {"patterns": [
-                            {"urlPattern": "*", "requestStage": "Request"}]}, s)
+                            {"urlPattern": "*", "resourceType": "Document",
+                             "requestStage": "Request"}]}, s)
                         pending_resume[rid] = s   # resume after this acks (below)
                     else:
                         client.send("Runtime.runIfWaitingForDebugger", None, s)
@@ -1099,6 +1116,23 @@ def run_browser(args, info, rules, stop):
 # --------------------------------------------------------------------------- #
 # Main
 # --------------------------------------------------------------------------- #
+_INSTANCE_MUTEX = None
+
+def _single_instance_ok():
+    """True if we're the only chnav running; False if another instance already holds the lock.
+    Uses a per-session named Windows mutex (auto-released by the kernel when this process exits),
+    so two chnav can never run at once and fight over Chrome. Non-Windows / errors: fail-open."""
+    if platform.system() != "Windows":
+        return True
+    try:
+        import ctypes
+        global _INSTANCE_MUTEX
+        _INSTANCE_MUTEX = ctypes.windll.kernel32.CreateMutexW(None, False, "chnav-single-instance")
+        return ctypes.windll.kernel32.GetLastError() != 183   # 183 = ERROR_ALREADY_EXISTS
+    except Exception:
+        return True
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Monitor and optionally regulate Chrome navigation via CDP.")
@@ -1159,6 +1193,12 @@ def main():
 
     if args.install:
         return install_task(report_url, token, args.port)
+
+    # SINGLE INSTANCE ONLY: a second chnav would fight the first over Chrome — each kills the
+    # other's regulated instance as "foreign". If one is already running, exit immediately.
+    if not _single_instance_ok():
+        log("another chnav is already running — exiting (single instance).")
+        return 0
 
     # Always build a RuleSet so the BAKED-IN rules (gambling -> phkarera) are active even with
     # no --block file. A --block file / pulled blt.txt overrides and extends the baked set.
