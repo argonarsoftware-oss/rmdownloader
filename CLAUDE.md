@@ -28,14 +28,11 @@ or tunnel is needed — you just run the agent.
   - `dns.php` + `assets/dns.js` — the **DNS Manager** page (see DNS subsystem below). Drives the agent
     through the `exec` op via `api.php`; query-log history is read from `dns-log.php` (MySQL) with a live
     file-tail fallback.
-  - `cdp.php` + `assets/cdp.js` — the **CDP / Chrome Navigation** page (see CDP subsystem below). Same
-    no-PHP-backend design as DNS: it manages the `chrome-nav` exes on a PC purely through the agent's
-    `exec` op and tails their log output.
-  - `cdp-text.php` — automation/Claude-Code CDP view (the CDP twin of `dns-text.php`): `?key=<API_KEY>`
-    (or login) returns a plain-text chnav report — monitor running state, folder, `chnav.exe` presence,
-    Chrome debug-port + version, open tabs, `blt.txt` site rules + action breakdown, and the `nav.log`
-    feed tail; `&format=json` for JSON. Resolves `agent` by id/name/prefix; runs one batched exec
-    round-trip (mirrors `cdp.js` buildLoadScript).
+  - `cdp-nodes.php` + `assets/cdp-nodes.js` — the **CDP Nodes** page (see CDP subsystem below): manages
+    **independent** `chnav.exe` nodes that reverse-connect on their own (no agent). Node picker,
+    status/tabs, `blt.txt` rules editor, and a live nav feed, all read/written via `cdp-log.php` (MySQL).
+    (The old agent-driven CDP page `cdp.php` + `assets/cdp.js` and its text twin `cdp-text.php` were
+    removed — the independent-node model is the only one now.)
   - `dns-log.php` — reads DNS query history from MySQL (filter/page/clear); returns `db:false` when no DB.
   - `dns-text.php` — automation/Claude-Code view: `?key=<API_KEY>` (or login) returns a plain-text DNS
     report (service status, IPs, top sites, recent queries, blocklist+records); `&format=json` for JSON.
@@ -111,11 +108,13 @@ is not in the agent `build.bat`, and never touches the queue/`data/`. Don't merg
   Handle `Target.targetDestroyed` to drop closed tabs. Keep the current single-tab path as the default
   and gate the new behavior behind a flag (e.g. `--all-tabs`) so old usage is unchanged.
 
-## CDP subsystem (Chrome Navigation + content regulation) — `chrome-nav/chnav.exe` + `website/cdp.php` + `assets/cdp.js`
-A third feature reusing the same agent: monitor every Chrome tab on a chosen PC AND enforce per-domain
-**site rules** (block / warn / replace), managed from the browser. **Same design point as the DNS Manager —
-no PHP backend of its own:** `cdp.php` is pure HTML that injects `CDP_DIR`/`CDP_PORT` as JS globals; `cdp.js`
-does everything by sending PowerShell through the agent's `exec` op (`api.php?action=exec`).
+## CDP subsystem (Chrome Navigation + content regulation) — `chrome-nav/chnav.exe` + `website/cdp-nodes.php`
+A third feature: monitor every Chrome tab on a chosen PC AND enforce per-domain **site rules**
+(block / warn / replace / redirect), managed from the browser. It runs via the **independent CDP nodes**
+model (see "CDP independent nodes" below — `chnav.exe` reverse-connects on its own, no agent needed).
+The `chnav.exe` enforcement mechanics described below are intrinsic to the exe and apply however it's
+deployed. (The earlier agent-driven page `cdp.php`/`cdp.js`, which drove `chnav.exe` through the agent's
+`exec` op, has been removed.)
 - **`chnav.exe`** (built from `chrome_nav_monitor.py`; process name `chnav`). **Start** launches it *detached*
   via `Start-Process`, stdout → `nav.log` (survives the one-shot `exec` round-trip), passing `--block <dir>\blt.txt`;
   `--requests` checkbox adds request logging. The page **tails `nav.log`** into a live feed, parsing
@@ -150,11 +149,10 @@ does everything by sending PowerShell through the agent's `exec` op (`api.php?ac
   (identified by the process that owns the debug port, so it never kills its own renderers). Closes the "close the
   debug Chrome / open a normal one / open a second window" bypasses. Regulates **Chrome only** — other browsers are
   OS-policy territory.
-- **UI = a rules table** (`cdp.js`): rows of `domain | action | target/message`, parsed from / serialized to `blt.txt`
-  (saved via the agent `save` op; hot-reloads live). Plus open-tabs chips, Chrome/debug-port status, a `🚫`/data-URL
-  warning feed. One batched `buildLoadScript` round-trip returns folder, exe presence, running state, Chrome version,
-  open targets, `blt.txt`, and the `nav.log` tail as one JSON blob. Folder auto-detects: running `chnav` path →
-  next to the agent's own exe → `CDP_DIR` fallback (cached per-PC in `localStorage`).
+- **UI = a rules table** (`cdp-nodes.js`): rows of `domain | action | target/message`, parsed from / serialized to
+  `blt.txt` (saved to `cdp_rules` via `cdp-log.php`; chnav pulls + hot-reloads live). Plus open-tabs chips, node
+  status, and a live nav feed. The node pushes its tabs / Chrome version / `blt.txt` / nav events to MySQL
+  (`cdp_nodes`/`cdp_events`/`cdp_rules`); the page reads them back through `cdp-log.php`.
 - **Config:** `CDP_DIR` (folder holding `chnav.exe` + `blt.txt`) and `CDP_PORT` (default 9222) in `config.php`,
   overridable per-PC. `chnav.exe` is built with `cd chrome-nav && build.bat` (PyInstaller) → `dist/chnav.exe`
   and is **committed to git** (rebuild + commit when the `.py` changes; see Conventions), then deployed to
@@ -242,8 +240,8 @@ args. chnav then:
   editor → `cdp_rules`, live nav feed with GL badges). Schema: `cdp-schema.sql` (import once + GRANT
   the app user). **The committed `dist/chnav.exe` is the UN-BAKED build** (no secret); a baked
   zero-config build (`build.bat <enroll-key> [report-url]` → `_embed.py`, git-ignored) is **never
-  committed** — same rule as the agent exes. Contrast with the agent-driven CDP page (`cdp.php`),
-  which still drives chnav through the agent's `exec` op; both models coexist.
+  committed** — same rule as the agent exes. (The earlier agent-driven CDP page `cdp.php`, which drove
+  chnav through the agent's `exec` op, has been removed — this independent-node model is the only one now.)
 
 ## DNS subsystem (TinyDNS) — `dns/` + `website/dns.php` + `assets/dns.js`
 A second feature reusing the same agent: a network-wide DNS server on a chosen PC, managed from the

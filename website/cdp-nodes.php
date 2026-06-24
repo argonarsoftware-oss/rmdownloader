@@ -18,7 +18,6 @@ require_login();
   <div class="spacer"></div>
   <a class="btn ghost" href="index.php">🗂 Files</a>
   <a class="btn ghost" href="dns.php">🌐 DNS</a>
-  <a class="btn ghost" href="cdp.php">🧭 CDP (agent)</a>
   <a class="btn ghost" href="terminal.php">💻 Terminal</a>
   <a class="btn ghost" href="logout.php">Sign out</a>
 </header>

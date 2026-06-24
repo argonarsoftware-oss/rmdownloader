@@ -23,7 +23,7 @@ $dnsTask = defined('DNS_TASK') ? DNS_TASK : 'TinyDNS';
   <div id="hostinfo" class="muted"></div>
   <div class="spacer"></div>
   <a class="btn ghost" href="index.php">🗂 Files</a>
-  <a class="btn ghost" href="cdp.php">🧭 CDP</a>
+  <a class="btn ghost" href="cdp-nodes.php">🧭 CDP Nodes</a>
   <a class="btn ghost" href="terminal.php">💻 Terminal</a>
   <a class="btn ghost" href="logout.php">Sign out</a>
 </header>
