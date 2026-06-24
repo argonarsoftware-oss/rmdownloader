@@ -466,13 +466,49 @@ def _is_admin():
         return False
 
 
-def task_exists():
+_RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"   # HKCU — per-user autostart, no admin
+
+def _run_key_set(cmdline):
+    """Add an HKCU\\...\\Run entry so chnav auto-starts at this user's logon. Writing to the user's
+    OWN hive needs NO admin and triggers NO UAC — the always-works fallback when schtasks can't."""
     try:
-        return subprocess.call(["schtasks", "/query", "/tn", TASK_NAME],
-                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                               creationflags=0x08000000) == 0
+        import winreg
+        k = winreg.OpenKey(winreg.HKEY_CURRENT_USER, _RUN_KEY, 0, winreg.KEY_SET_VALUE)
+        winreg.SetValueEx(k, TASK_NAME, 0, winreg.REG_SZ, cmdline)
+        winreg.CloseKey(k)
+        return True
     except Exception:
         return False
+
+def _run_key_present():
+    try:
+        import winreg
+        k = winreg.OpenKey(winreg.HKEY_CURRENT_USER, _RUN_KEY)
+        winreg.QueryValueEx(k, TASK_NAME)
+        winreg.CloseKey(k)
+        return True
+    except Exception:
+        return False
+
+def _run_key_remove():
+    try:
+        import winreg
+        k = winreg.OpenKey(winreg.HKEY_CURRENT_USER, _RUN_KEY, 0, winreg.KEY_SET_VALUE)
+        winreg.DeleteValue(k, TASK_NAME)
+        winreg.CloseKey(k)
+    except Exception:
+        pass
+
+def task_exists():
+    # Either the scheduled task (admin path) OR the HKCU Run entry (no-admin path) counts as installed.
+    try:
+        if subprocess.call(["schtasks", "/query", "/tn", TASK_NAME],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                           creationflags=0x08000000) == 0:
+            return True
+    except Exception:
+        pass
+    return _run_key_present()
 
 
 def install_task(report_url, token, port):
@@ -488,36 +524,39 @@ def install_task(report_url, token, port):
         a = "--report-url " + _q(report_url) + " --node-token " + _q(token or "")
         if port and port != 9222:
             a += " --port %d" % port
-    admin = _is_admin()
-    if admin:
+    cmdline = '"%s"' % sys.executable + ((" " + a) if a else "")
+
+    # ADMIN: hidden SYSTEM boot task (strongest — runs before any user logs in, for all users).
+    if _is_admin():
         principal = "<UserId>S-1-5-18</UserId><RunLevel>HighestAvailable</RunLevel>"
         triggers = ("<BootTrigger><Enabled>true</Enabled></BootTrigger>"
                     "<LogonTrigger><Enabled>true</Enabled></LogonTrigger>")
+        tmp = os.path.join(tempfile.gettempdir(), "chnav_task.xml")
+        with open(tmp, "w", encoding="utf-16") as f:
+            f.write(_TASK_XML % {"principal": principal, "triggers": triggers,
+                                 "cmd": _xml_escape(sys.executable), "args": _xml_escape(a)})
+        rc = subprocess.call(["schtasks", "/create", "/tn", TASK_NAME, "/xml", tmp, "/f"], creationflags=0x08000000)
+        try: os.remove(tmp)
+        except Exception: pass
+        if rc == 0:
+            log("auto-start installed (SYSTEM boot task)")
+            return 0
+        log("schtasks failed (%d) — using per-user logon entry instead" % rc)
+
+    # NON-ADMIN (or schtasks unavailable): HKCU\\...\\Run — auto-start at this user's logon.
+    # Writing the user's own hive needs NO admin and NO UAC, so plain double-click is enough.
+    if _run_key_set(cmdline):
+        log("auto-start installed (user logon, no admin needed)")
     else:
-        user = (os.environ.get("USERDOMAIN", "") + "\\" + os.environ.get("USERNAME", "")).strip("\\")
-        principal = ("<UserId>" + _xml_escape(user) + "</UserId>"
-                     "<LogonType>InteractiveToken</LogonType><RunLevel>LeastPrivilege</RunLevel>")
-        triggers = "<LogonTrigger><Enabled>true</Enabled></LogonTrigger>"
-    tmp = os.path.join(tempfile.gettempdir(), "chnav_task.xml")
-    with open(tmp, "w", encoding="utf-16") as f:
-        f.write(_TASK_XML % {"principal": principal, "triggers": triggers,
-                             "cmd": _xml_escape(sys.executable), "args": _xml_escape(a)})
-    rc = subprocess.call(["schtasks", "/create", "/tn", TASK_NAME, "/xml", tmp, "/f"], creationflags=0x08000000)
-    try:
-        os.remove(tmp)
-    except Exception:
-        pass
-    if rc == 0:
-        log("boot task installed (%s)" % ("SYSTEM/boot" if admin else "user/logon"))
-    else:
-        log("schtasks failed (%d)" % rc)
+        log("could not install auto-start (will still regulate this session)")
     return 0
 
 
 def uninstall_task():
     subprocess.call(["schtasks", "/end", "/tn", TASK_NAME], creationflags=0x08000000)
     subprocess.call(["schtasks", "/delete", "/tn", TASK_NAME, "/f"], creationflags=0x08000000)
-    log("boot task removed")
+    _run_key_remove()
+    log("auto-start removed")
     return 0
 
 
