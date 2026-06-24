@@ -289,6 +289,13 @@ Two ways a PC becomes known to the site:
   Security: only a holder of `ENROLL_KEY` can enroll, and an agent can only expose its OWN machine.
 
 ## Conventions
+- **"Relma" is our own coined brand word for the user-facing UI — it is NOT a typo for "remote".**
+  In anything a user sees in the browser (page titles, headings, the header brand, UI labels), use
+  **Relma** instead of the word "remote" (e.g. "Relma File Manager"). This is a deliberate rename, so
+  don't "correct" it back to "Remote". It applies to display text ONLY — code, comments, identifiers,
+  git-remote logic, and technical CLI flags (`--remote-debugging-port`, `remote.origin.url`, etc.) keep
+  their real names. The project/repo is still `rmdownloader`; "remote-connect"/"reverse-connect" wording
+  in docs and comments is unaffected.
 - Secrets live only in `config.php` / `agent.conf` (git-ignored). Commit `*.sample` instead.
 - The agent makes outbound calls only; reachability needs no inbound config.
 - Multiple PCs: static `rm_agents()` entries and/or auto-enrolled agents (see above); the UI shows a picker.
