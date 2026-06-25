@@ -35,7 +35,7 @@ require_login();
 
 <main class="dns-main">
   <div class="alert info">
-    🧭 <b>Independent chnav nodes.</b> These PCs run <code>chnav.exe</code> on their own — <b>no agent needed</b>.
+    🧭 <b>Independent chnav nodes.</b> These AIs run <code>chnav.exe</code> on their own — <b>no agent needed</b>.
     They push their navigation events here and pull their site rules from the server. Edit a node's rules
     below and chnav applies them within a few seconds (hot-reload).
   </div>

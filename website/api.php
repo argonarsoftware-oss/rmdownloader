@@ -34,7 +34,7 @@ if ($action === 'removeagent') {
     $rid = sanitize_id(isset($_REQUEST['id']) ? $_REQUEST['id'] : '');
     $reg = load_registry();
     if ($rid === '' || !isset($reg[$rid])) {
-        echo json_encode(array('ok' => false, 'error' => 'Only auto-enrolled PCs can be removed (static ones are set in config.php).'));
+        echo json_encode(array('ok' => false, 'error' => 'Only auto-enrolled AIs can be removed (static ones are set in config.php).'));
         exit;
     }
     unregister_agent($rid);

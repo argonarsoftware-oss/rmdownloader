@@ -13,8 +13,8 @@ require_login();
 <body>
 <header class="topbar">
   <div class="brand">🗂 Relma File Manager</div>
-  <select id="agentSel" class="agent-select" title="Client PC"></select>
-  <button class="btn ghost" id="btnRemovePc" title="Remove this PC from the list">✕</button>
+  <select id="agentSel" class="agent-select" title="Client AI"></select>
+  <button class="btn ghost" id="btnRemovePc" title="Remove this AI from the list">✕</button>
   <div id="hostinfo" class="muted"></div>
   <div class="spacer"></div>
   <a class="btn ghost" href="dns.php">🌐 DNS</a>

@@ -124,7 +124,7 @@ function applyUpstream() {
   ].join("\n");
   execCmd(ps, 'powershell').then(function (d) {
     var s = (d.stdout || '').trim();
-    if (s.indexOf('notask') >= 0) { toast('No TinyDNS task to update on this PC', false); msg('No TinyDNS task.'); return; }
+    if (s.indexOf('notask') >= 0) { toast('No TinyDNS task to update on this AI', false); msg('No TinyDNS task.'); return; }
     toast('Upstream applied — DNS restarted', true);
     msg('Upstream set to ' + (val || 'CleanBrowsing default') + '; DNS restarted.');
     setTimeout(function () { refreshStatus(); }, 1500);
@@ -294,13 +294,13 @@ function renderLog() {
 
 function clearLog() {
   if (logMode === 'db') {
-    if (!confirm('Clear the stored query history for this PC? (the live log file on the PC is unaffected)')) return;
+    if (!confirm('Clear the stored query history for this AI? (the live log file on the AI is unaffected)')) return;
     dnsLog({ action: 'clear' }, true).then(function (d) {
       if (d && d.ok) { toast('Query history cleared', true); loadLog(); }
       else { toast('Clear failed: ' + ((d && d.error) || 'error'), false); }
     });
   } else {
-    if (!confirm('Clear the query log on this PC?')) return;
+    if (!confirm('Clear the query log on this AI?')) return;
     execCmd("if (Test-Path -LiteralPath '" + logPath() + "') { Clear-Content -LiteralPath '" + logPath() + "' }", 'powershell')
       .then(function () { loadLogFile(); });
   }
@@ -444,7 +444,7 @@ document.getElementById('statsFilter').oninput = function () {
 // ---- boot ----
 getJSON('agents').then(function (d) {
   agentSel.innerHTML = '';
-  if (!d.ok || !d.agents.length) { msg('No PCs connected — run the agent on the DNS machine.'); return; }
+  if (!d.ok || !d.agents.length) { msg('No AIs connected — run the agent on the DNS machine.'); return; }
   d.agents.forEach(function (a) {
     var o = document.createElement('option');
     o.value = a.id;

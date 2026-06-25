@@ -286,7 +286,7 @@ agentSel.onchange = function () {
 function loadAgents(preferId) {
   return getJSON('agents').then(function (d) {
     agentSel.innerHTML = '';
-    if (!d.ok || !d.agents.length) { state.agent = null; setStatus('No PCs connected yet — run the agent on a PC.'); return; }
+    if (!d.ok || !d.agents.length) { state.agent = null; setStatus('No AIs connected yet — run the agent on an AI.'); return; }
     d.agents.forEach(function (a) {
       var o = document.createElement('option');
       o.value = a.id;

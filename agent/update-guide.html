@@ -44,29 +44,29 @@
       supervisor backs up &amp; swaps <span class="ar">→</span> <b>probation</b> (worker.hb &lt; ~90s) <span class="ar">→</span>
       healthy ✅ or <b>auto-rollback</b> to <code class="inl">Agent.prev.exe</code>
     </div>
-    <p>The boot task runs the <b>supervisor</b> (<code class="inl">agentsvc.exe</code>), which child-manages the <b>worker</b> (<code class="inl">Agent.exe</code>). The worker is never the boot exe, so it can be swapped freely — no file-lock or self-kill problem. During the swap the supervisor keeps the PC online (keepalive ping), so the connection isn't lost. A bad build that doesn't check in is rolled back automatically.</p>
+    <p>The boot task runs the <b>supervisor</b> (<code class="inl">agentsvc.exe</code>), which child-manages the <b>worker</b> (<code class="inl">Agent.exe</code>). The worker is never the boot exe, so it can be swapped freely — no file-lock or self-kill problem. During the swap the supervisor keeps the AI online (keepalive ping), so the connection isn't lost. A bad build that doesn't check in is rolled back automatically.</p>
   </div>
 
   <div class="note">Prereqs: the VPS has pulled the latest (<code class="inl">?action=ping</code> + <code class="inl">?action=update</code>), and you know your <b>API key</b> (from the VPS <code class="inl">config.php</code>). Build the new exes with <code class="inl">build.bat</code> and bump <code class="inl">AGENT_VERSION</code> (date-based, e.g. <code class="inl">2026.06.22</code>).</div>
 
-  <div class="note warn">The web <b>Terminal</b> in <code class="inl">index.php</code> is a <b>single-line</b> input (it strips newlines on paste), so multi-line commands / here-strings won't work there. Every command below is written as <b>one line</b> on purpose — paste it whole. Each step is tagged 🖥️ <b>web Terminal</b> (runs on the target PC) or 💻 <b>your build box</b> (the machine with the new exe).</div>
+  <div class="note warn">The web <b>Terminal</b> in <code class="inl">index.php</code> is a <b>single-line</b> input (it strips newlines on paste), so multi-line commands / here-strings won't work there. Every command below is written as <b>one line</b> on purpose — paste it whole. Each step is tagged 🖥️ <b>web Terminal</b> (runs on the target AI) or 💻 <b>your build box</b> (the machine with the new exe).</div>
 
   <div class="step">
-    <h2>① One-time migration — switch a PC to the supervisor model <span class="pill">🖥️ web Terminal · PowerShell</span></h2>
-    <p>Existing PCs run the old <code class="inl">Agent.exe</code> as the boot task. Move <code class="inl">agentsvc.exe</code> + the new <code class="inl">Agent.exe</code> next to it (Files page upload), then paste this <b>one line</b> in the web Terminal (set the shell to <b>PowerShell</b>). It re-points the boot task to the supervisor via a detached task so killing the agent doesn't kill the updater:</p>
+    <h2>① One-time migration — switch an AI to the supervisor model <span class="pill">🖥️ web Terminal · PowerShell</span></h2>
+    <p>Existing AIs run the old <code class="inl">Agent.exe</code> as the boot task. Move <code class="inl">agentsvc.exe</code> + the new <code class="inl">Agent.exe</code> next to it (Files page upload), then paste this <b>one line</b> in the web Terminal (set the shell to <b>PowerShell</b>). It re-points the boot task to the supervisor via a detached task so killing the agent doesn't kill the updater:</p>
     <div class="cmd"><code>$task='rmdownloaderAgent'; $dir=Split-Path -Parent (Get-ScheduledTask -TaskName $task).Actions.Execute; $svc='start "" "' + $dir + '\agentsvc.exe"'; $bat='C:\Windows\Temp\rmmig.bat'; Set-Content -Encoding ascii $bat @('@echo off','ping -n 2 127.0.0.1 >nul','schtasks /end /tn "rmdownloaderAgent"','ping -n 3 127.0.0.1 >nul',$svc,'schtasks /delete /tn rmmig /f'); schtasks /create /tn rmmig /tr "cmd /c $bat" /sc once /st 00:00 /ru SYSTEM /rl HIGHEST /f; schtasks /run /tn rmmig</code><span class="copy">Copy</span></div>
-    <div class="expect"><b>→</b> the old worker stops, <code class="inl">agentsvc.exe</code> starts, takes over the boot task (re-creates it pointing at itself when elevated), and launches the worker. The PC reappears online. Do this on a <b>canary PC first</b>.</div>
+    <div class="expect"><b>→</b> the old worker stops, <code class="inl">agentsvc.exe</code> starts, takes over the boot task (re-creates it pointing at itself when elevated), and launches the worker. The AI reappears online. Do this on a <b>canary AI first</b>.</div>
   </div>
 
   <div class="step">
     <h2>② Roll out a new worker build — canary, then fleet <span class="pill">💻 your build box · every update after</span></h2>
-    <p>On the build box (which has the new <code class="inl">Agent.exe</code>), run the rollout script — <b>not</b> in the web Terminal. It pushes to one canary, waits for it to reconnect on the new version, and only then does the rest. A PC that doesn't come back on the new version is reported as failed (its supervisor rolls it back).</p>
+    <p>On the build box (which has the new <code class="inl">Agent.exe</code>), run the rollout script — <b>not</b> in the web Terminal. It pushes to one canary, waits for it to reconnect on the new version, and only then does the rest. An AI that doesn't come back on the new version is reported as failed (its supervisor rolls it back).</p>
     <div class="cmd"><code>powershell -ExecutionPolicy Bypass -File C:\Users\Administrator\Desktop\rmdownloader\agent\rollout-update.ps1 -Server https://dos.argonar.co -ApiKey YOUR_API_KEY -ExePath C:\Users\Administrator\Desktop\rmdownloader\agent\Agent.exe -Version 2026.06.22</code><span class="copy">Copy</span></div>
-    <div class="expect"><b>→</b> <code class="inl">=== CANARY ===</code> … OK, then <code class="inl">=== FLEET ===</code> per-PC OK/FAILED, then a summary. Pin the canary with <code class="inl">-CanaryId &lt;id&gt;</code>; widen the wait with <code class="inl">-TimeoutSec 180</code>.</div>
+    <div class="expect"><b>→</b> <code class="inl">=== CANARY ===</code> … OK, then <code class="inl">=== FLEET ===</code> per-AI OK/FAILED, then a summary. Pin the canary with <code class="inl">-CanaryId &lt;id&gt;</code>; widen the wait with <code class="inl">-TimeoutSec 180</code>.</div>
   </div>
 
   <div class="step">
-    <h2>③ Update a single PC manually (optional) <span class="pill">💻 your build box · one line</span></h2>
+    <h2>③ Update a single AI manually (optional) <span class="pill">💻 your build box · one line</span></h2>
     <p>Without the script — base64 the exe and POST it to the update action for one agent (run on the build box; replace <code class="inl">AGENT_ID</code> + <code class="inl">YOUR_API_KEY</code>):</p>
     <div class="cmd"><code>$b64=[Convert]::ToBase64String([IO.File]::ReadAllBytes('C:\Users\Administrator\Desktop\rmdownloader\agent\Agent.exe')); Invoke-RestMethod -Method Post -Uri "https://dos.argonar.co/api.php?action=update&amp;agent=AGENT_ID&amp;key=YOUR_API_KEY" -Body @{ exe=$b64; version='2026.06.22' }</code><span class="copy">Copy</span></div>
     <div class="expect"><b>→</b> <code class="inl">{ok:true, staged:true, ...}</code>; the supervisor swaps + health-checks within ~90s.</div>
@@ -76,10 +76,10 @@
     <h2>④ Verify <span class="pill">💻 your build box · one line</span></h2>
     <p>List agents and their reported versions (the picker tooltip shows this too):</p>
     <div class="cmd"><code>Invoke-RestMethod "https://dos.argonar.co/api.php?action=agents&amp;key=YOUR_API_KEY" | Select-Object -ExpandProperty agents | Format-Table name,online,version</code><span class="copy">Copy</span></div>
-    <div class="expect"><b>→</b> updated PCs show <code class="inl">version = 2026.06.22</code> and <code class="inl">online = True</code>.</div>
+    <div class="expect"><b>→</b> updated AIs show <code class="inl">version = 2026.06.22</code> and <code class="inl">online = True</code>.</div>
   </div>
 
-  <div class="note warn">Safety: always canary first. A bad worker rolls itself back per-PC, but a build that <i>connects</i> yet misbehaves won't trigger rollback — so confirm the canary actually works (open its files, run a command) before the fleet.</div>
+  <div class="note warn">Safety: always canary first. A bad worker rolls itself back per-AI, but a build that <i>connects</i> yet misbehaves won't trigger rollback — so confirm the canary actually works (open its files, run a command) before the fleet.</div>
   <div class="note bad">Updating the <b>supervisor</b> itself (rare) isn't done via the rollout — use the migration recipe in step ① (it overwrites <code class="inl">agentsvc.exe</code> the same way). The supervisor is intentionally tiny so this is seldom needed.</div>
 
 </main>

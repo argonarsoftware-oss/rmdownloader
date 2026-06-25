@@ -55,7 +55,7 @@
       <h1>rmdownloader — VPS Setup Guide</h1>
     </div>
   </header>
-  <p class="sub">Host the web file manager on your VPS and connect it to one or more Windows PCs. <span class="tag">Manual pull or GitHub <code class="inline">[deploy]</code> webhook</span></p>
+  <p class="sub">Host the web file manager on your VPS and connect it to one or more Windows AIs. <span class="tag">Manual pull or GitHub <code class="inline">[deploy]</code> webhook</span></p>
 
   <div class="meta">
     <span class="pill">Domain: <b>dos.argonar.co</b></span>
@@ -65,11 +65,11 @@
   </div>
 
   <div class="note">
-    <b>How it fits together:</b> <code class="inline">Agent.exe</code> on each Windows PC
+    <b>How it fits together:</b> <code class="inline">Agent.exe</code> on each Windows AI
     <b>reverse-connects out</b> to this VPS over HTTPS and long-polls for commands — so there's
     <b>no inbound port, no tunnel, no port-forwarding</b>. The browser talks to the PHP site, the
     site queues a command, the agent picks it up, runs it, and posts the result back.
-    On each PC you literally just run the agent.
+    On each AI you literally just run the agent.
   </div>
 
   <div class="note">✅ <b>Done already:</b> DNS, packages, <b>repo clone</b>, and <b>config.php</b>
@@ -96,26 +96,26 @@ curl -s -H "Host: dos.argonar.co" "http://localhost/api.php?action=agents&amp;ke
   <div class="code"><button class="copy">Copy</button><pre>certbot --apache -d dos.argonar.co</pre></div>
   <p>Now <a href="https://dos.argonar.co" target="_blank">https://dos.argonar.co</a> serves the login page.</p>
 
-  <h2><span class="n">4</span> Build &amp; run the agent (on each Windows PC)</h2>
+  <h2><span class="n">4</span> Build &amp; run the agent (on each Windows AI)</h2>
   <p>No tunnel, no port-forwarding, <b>no config file</b>. The agent is <b>windowless</b> (runs
      silently in the background) and its server defaults to
-     <code class="inline">https://dos.argonar.co</code> — you just pass the PC's token.</p>
+     <code class="inline">https://dos.argonar.co</code> — you just pass the AI's token.</p>
   <div class="code"><button class="copy">Copy</button><pre>cd agent
 build.bat                       :: produces Agent.exe (no installs needed)
 Agent.exe &lt;PC1 token from step 2&gt;</pre></div>
   <p class="muted">On first run the agent <b>self-installs a hidden boot task</b>
      (<code class="inline">rmdownloaderAgent</code>) pointing at itself — run elevated for
-     SYSTEM/boot, or normally for user/logon. It restarts on every boot, and the PC shows
+     SYSTEM/boot, or normally for user/logon. It restarts on every boot, and the AI shows
      <b>🟢 online</b> within seconds. (Skip with <code class="inline">--no-autostart</code>;
      remove with <code class="inline">Agent.exe --uninstall</code>.)</p>
 
   <h2><span class="n">5</span> Use it</h2>
-  <p>Open <a href="https://dos.argonar.co" target="_blank">https://dos.argonar.co</a>, sign in, pick the PC,
+  <p>Open <a href="https://dos.argonar.co" target="_blank">https://dos.argonar.co</a>, sign in, pick the AI,
      and browse its drives. Files download/upload straight through the VPS.</p>
   <p class="muted">The top bar also has two more tools that drive the same agent:
-     <b>🌐 DNS</b> — manage a network-wide TinyDNS server on the PC (records, blocklist, query log), and
+     <b>🌐 DNS</b> — manage a network-wide TinyDNS server on the AI (records, blocklist, query log), and
      <b>🧭 CDP</b> — watch Chrome navigation live and run local request mocks. Both need their helper exe
-     (<code class="inline">dnl.exe</code> / <code class="inline">chnav.exe</code>) deployed on the PC.</p>
+     (<code class="inline">dnl.exe</code> / <code class="inline">chnav.exe</code>) deployed on the AI.</p>
 
   <h2><span class="n">6</span> Updating later — manual pull</h2>
   <p>To pull new commits onto the VPS by hand:</p>

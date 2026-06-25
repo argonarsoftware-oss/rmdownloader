@@ -105,7 +105,7 @@ function syncThenLoad() {
 }
 
 function clearHistory() {
-  if (!confirm('Clear ALL stored query history for this PC? (the live log on the PC is unaffected)')) return;
+  if (!confirm('Clear ALL stored query history for this AI? (the live log on the AI is unaffected)')) return;
   dnsLog({ action: 'clear' }, true).then(function (d) {
     if (d && d.ok) { rows = []; cursor = null; render(); msg('History cleared.'); }
     else { msg('Clear failed: ' + ((d && d.error) || '')); }
@@ -140,7 +140,7 @@ document.getElementById('qAuto').onchange = function () {
 // boot: populate the PC picker (shared 'rmd_agent' selection with dns.php)
 fetch('api.php?action=agents', { credentials: 'same-origin' }).then(function (r) { return r.json(); }).then(function (d) {
   agentSel.innerHTML = '';
-  if (!d.ok || !d.agents.length) { msg('No PCs connected.'); return; }
+  if (!d.ok || !d.agents.length) { msg('No AIs connected.'); return; }
   d.agents.forEach(function (a) {
     var o = document.createElement('option');
     o.value = a.id;

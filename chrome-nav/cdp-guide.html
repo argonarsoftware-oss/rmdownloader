@@ -59,7 +59,7 @@
       <h1>rmdownloader — CDP / Chrome Navigation &amp; Regulation</h1>
     </div>
   </header>
-  <p class="sub">Watch a PC's Chrome navigation live in the dashboard, and enforce per-site rules — block, warn, or replace — across every tab. <span class="tag">For PCs you administer</span></p>
+  <p class="sub">Watch an AI's Chrome navigation live in the dashboard, and enforce per-site rules — block, warn, or replace — across every tab. <span class="tag">For AIs you administer</span></p>
 
   <div class="meta">
     <span class="pill">Page: <b>cdp.php</b> (🧭 CDP)</span>
@@ -70,7 +70,7 @@
 
   <div class="note">
     <b>How it fits together:</b> the <b>🧭 CDP</b> page has <b>no backend of its own</b> — exactly like the DNS
-    Manager. <code class="inline">cdp.js</code> sends PowerShell to the PC through the agent's
+    Manager. <code class="inline">cdp.js</code> sends PowerShell to the AI through the agent's
     <code class="inline">exec</code> op to launch <code class="inline">chnav.exe</code> and tail its log output back
     into the browser. <code class="inline">chnav.exe</code> attaches to Chrome over the <b>Chrome DevTools
     Protocol</b> (browser-level, so it covers every tab), prints navigation, and enforces the rules in
@@ -84,11 +84,11 @@
 build.bat            :: -> dist\chnav.exe  (~10 MB, runs with no Python)</pre></div>
   <p class="muted"><code class="inline">chnav.exe</code> is a git-ignored build artifact — build it locally, don't commit.</p>
 
-  <h2><span class="n">2</span> Deploy it to the PC</h2>
-  <p>Copy <code class="inline">chnav.exe</code> into one folder on each target PC — ideally <b>next to the agent's
+  <h2><span class="n">2</span> Deploy it to the AI</h2>
+  <p>Copy <code class="inline">chnav.exe</code> into one folder on each target AI — ideally <b>next to the agent's
      own exe</b>, which the page auto-detects. The rules file <code class="inline">blt.txt</code> is created in the
      same folder when you Save rules from the page.</p>
-  <div class="code"><button class="copy">Copy</button><pre>:: example layout on the PC
+  <div class="code"><button class="copy">Copy</button><pre>:: example layout on the AI
 C:\Users\Administrator\Desktop\chrome-nav\chnav.exe</pre></div>
 
   <h2><span class="n">3</span> Point the site at it (optional)</h2>
@@ -99,7 +99,7 @@ C:\Users\Administrator\Desktop\chrome-nav\chnav.exe</pre></div>
 define('CDP_PORT', 9222);</pre></div>
 
   <h2><span class="n">4</span> Start it &amp; watch navigation</h2>
-  <p>Open the app, click <b>🧭 CDP</b> in the top bar, pick the PC, then <b>▶ Start</b>.</p>
+  <p>Open the app, click <b>🧭 CDP</b> in the top bar, pick the AI, then <b>▶ Start</b>.</p>
   <table>
     <tr><th>Control</th><th>What it does</th></tr>
     <tr><td><b>▶ Start</b></td><td>Launches <code class="inline">chnav.exe</code>. It <b>verifies the debug port first</b>: if Chrome is already debugging it attaches; otherwise it kills the running Chrome and relaunches it with debugging (you can't add the port to a live Chrome).</td></tr>
@@ -145,7 +145,7 @@ news.example        warn  Back to work please</pre></div>
   </ul>
 
   <div class="warn">
-    <b>Scope &amp; ethics:</b> this seizes control of Chrome on the target PC and runs at the agent's privilege
+    <b>Scope &amp; ethics:</b> this seizes control of Chrome on the target AI and runs at the agent's privilege
     (<b>SYSTEM</b> if the agent auto-started elevated). Use it to regulate <b>machines you own/administer</b>.
     Serving fake content under a real URL to deceive other people is phishing/spoofing — don't.
   </div>

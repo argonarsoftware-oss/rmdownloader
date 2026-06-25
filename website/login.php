@@ -27,7 +27,7 @@ if (is_logged_in()) { header('Location: index.php'); exit; }
 <body class="login-body">
 <form class="login-card" method="post" autocomplete="off">
   <h1>Relma File Manager</h1>
-  <p class="muted">Sign in to manage your connected PCs.</p>
+  <p class="muted">Sign in to manage your connected AIs.</p>
   <?php if ($error): ?><div class="error"><?php echo htmlspecialchars($error); ?></div><?php endif; ?>
   <input type="password" name="password" placeholder="Password" autofocus required>
   <button type="submit">Sign in</button>

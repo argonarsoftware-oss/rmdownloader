@@ -120,7 +120,7 @@ function loadAgents() {
     agentSel.innerHTML = '';
     if (!d.ok || !d.agents.length) {
       state.agent = null;
-      append('<span class="err">No PCs connected yet — run the agent on a PC.</span>\n');
+      append('<span class="err">No AIs connected yet — run the agent on an AI.</span>\n');
       return;
     }
     d.agents.forEach(function (a) {

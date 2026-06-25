@@ -13,7 +13,7 @@ require_login();
 <body class="term-body">
 <header class="topbar">
   <div class="brand">💻 Terminal</div>
-  <select id="agentSel" class="agent-select" title="Client PC"></select>
+  <select id="agentSel" class="agent-select" title="Client AI"></select>
   <div id="hostinfo" class="muted"></div>
   <div class="spacer"></div>
   <a class="btn ghost" href="index.php">🗂 Files</a>
