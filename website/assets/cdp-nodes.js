@@ -24,6 +24,18 @@ function fmtTs(s) {
   return (MON[(+m[2]) - 1] || m[2]) + ' ' + (+m[3]) + ' at ' + h12 + ':' + m[5] + (m[6] ? ':' + m[6] : '') + ap;
 }
 
+// host of a url or "url|title" tab string, www-stripped
+function hostOf(u) {
+  u = String(u || '').split('|')[0];
+  var m = /^[a-z][a-z0-9+.-]*:\/\/([^\/:?#]+)/i.exec(u);
+  var h = m ? m[1] : u.split(/[\/:?#]/)[0];
+  return (h || '').replace(/^www\./i, '');
+}
+// per-browser device labels (no server storage — locked-down DB user can't ALTER)
+function aliasMap() { try { return JSON.parse(localStorage.getItem('rmd_cdpalias') || '{}') || {}; } catch (e) { return {}; } }
+function aliasGet(id) { return aliasMap()[id] || ''; }
+function aliasSet(id, v) { var m = aliasMap(); if (v) m[id] = v; else delete m[id]; try { localStorage.setItem('rmd_cdpalias', JSON.stringify(m)); } catch (e) {} }
+
 // ---- node rail (sidebar device picker) ----
 function loadNodes(preferId) {
   return cdp({ action: 'nodes' }).then(function (d) {
@@ -53,12 +65,29 @@ function renderRail() {
   var html = '';
   state.nodes.forEach(function (n) {
     var on = n.online;
-    var sub = on ? ((n.running ? 'running' : 'stopped') + ' · ' + ((n.tabs || []).length) + ' tab(s)')
-                 : agoStr(n.age);
-    html += '<div class="rail-node' + (n.id === state.node ? ' selected' : '') +
-      '" data-id="' + esc(n.id) + '" title="' + esc(n.id) + '">' +
-      '<div class="rn-name">' + (on ? '🟢' : '⚪') + ' <span>' + esc(n.name || n.id) + '</span></div>' +
-      '<div class="rn-sub">' + esc(sub) + '</div></div>';
+    var alias = aliasGet(n.id);
+    var label = alias || n.name || n.id;
+
+    // open-tab hosts (unique), 🎲 if the server flagged a gambling tab
+    var hosts = [];
+    (n.tabs || []).forEach(function (t) {
+      var h = hostOf(typeof t === 'string' ? t : (t && t[0]) || '');
+      if (h && hosts.indexOf(h) < 0) hosts.push(h);
+    });
+    var tabsLine = hosts.length
+      ? (n.gl ? '🎲 ' : '') + hosts.slice(0, 3).join(' · ') + (hosts.length > 3 ? ' +' + (hosts.length - 3) : '')
+      : '(no tabs)';
+    var health = 'Chrome ' + (n.chrome || '—') + ' · chnav ' + (n.running ? 'on' : 'off') + ' · ' + (on ? 'online' : agoStr(n.age));
+    var lastHost = hostOf(n.last_url);
+
+    html += '<div class="rail-node' + (n.id === state.node ? ' selected' : '') + '" data-id="' + esc(n.id) + '" title="' + esc(n.id) + '">' +
+      '<div class="rn-top"><div class="rn-name">' + (on ? '🟢' : '⚪') + ' <span>' + esc(label) + '</span></div>' +
+        '<button class="rn-edit" data-alias="' + esc(n.id) + '" title="Label this device (this browser only)">✎</button></div>' +
+      (alias ? '<div class="rn-id">' + esc(n.name || n.id) + '</div>' : '') +
+      '<div class="rn-line rn-health">' + esc(health) + '</div>' +
+      '<div class="rn-line rn-tabs' + (n.gl ? ' gl' : '') + '">' + esc(tabsLine) + '</div>' +
+      (lastHost ? '<div class="rn-line rn-last">→ ' + esc(lastHost) + '</div>' : '') +
+      '</div>';
   });
   el.innerHTML = html;
 }
@@ -170,6 +199,14 @@ function renderFeed() {
 
 // ---- wiring ----
 document.getElementById('nodeRailList').addEventListener('click', function (e) {
+  var edit = e.target.closest('.rn-edit');
+  if (edit) {
+    e.stopPropagation();
+    var aid = edit.getAttribute('data-alias');
+    var v = prompt('Label for this device (blank to clear). Saved in this browser only.', aliasGet(aid));
+    if (v !== null) { aliasSet(aid, v.trim()); renderRail(); }
+    return;
+  }
   var row = e.target.closest('[data-id]');
   if (row) { var id = row.getAttribute('data-id'); if (id && id !== state.node) selectNode(id); }
 });

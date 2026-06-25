@@ -31,12 +31,22 @@ try {
     if ($action === 'nodes') {
         $out = array();
         foreach (cdp_nodes($pdo) as $r) {
+            $tabs = (json_decode((string)$r['tabs'], true) ?: array());
+            // gambling flag: true if any open tab's host is a gambling domain (reuses the DNS heuristic).
+            $gl = false;
+            foreach ($tabs as $t) {
+                $url = is_array($t) ? (isset($t[0]) ? $t[0] : '') : (string)$t;  // "url|title"
+                $host = parse_url(explode('|', $url)[0], PHP_URL_HOST);
+                if ($host && is_gambling_domain($host)) { $gl = true; break; }
+            }
             $out[] = array(
                 'id' => $r['node_id'], 'name' => $r['name'],
                 'online' => ((int)$r['age'] < 30), 'age' => (int)$r['age'],
                 'chrome' => $r['chrome'], 'running' => (int)$r['running'],
                 'last_seen' => $r['last_seen'],
-                'tabs' => (json_decode((string)$r['tabs'], true) ?: array()),
+                'last_url' => (string)(isset($r['last_url']) ? $r['last_url'] : ''),
+                'gl' => $gl,
+                'tabs' => $tabs,
             );
         }
         echo json_encode(array('ok' => true, 'db' => true, 'nodes' => $out));

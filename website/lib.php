@@ -197,9 +197,11 @@ function cdp_set_rules($pdo, $id, $rules) {
 }
 
 function cdp_nodes($pdo) {
-    $st = $pdo->query('SELECT node_id, name, last_seen, chrome, tabs, running,
-                        (UNIX_TIMESTAMP() - UNIX_TIMESTAMP(last_seen)) AS age
-                       FROM cdp_nodes ORDER BY last_seen DESC');
+    // last_url = the node's most recent navigation event (newest by id); SELECT-only, no schema change.
+    $st = $pdo->query('SELECT n.node_id, n.name, n.last_seen, n.chrome, n.tabs, n.running,
+                        (UNIX_TIMESTAMP() - UNIX_TIMESTAMP(n.last_seen)) AS age,
+                        (SELECT e.url FROM cdp_events e WHERE e.node_id = n.node_id ORDER BY e.id DESC LIMIT 1) AS last_url
+                       FROM cdp_nodes n ORDER BY n.last_seen DESC');
     return $st->fetchAll();
 }
 

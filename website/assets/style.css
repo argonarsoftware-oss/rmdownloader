@@ -165,9 +165,19 @@ tr:hover .row-act{visibility:visible}
   padding:9px 11px;cursor:pointer;transition:background .12s,border-color .12s}
 .rail-node:hover{background:var(--hover)}
 .rail-node.selected{background:var(--accent-weak);border-color:var(--accent-ring);box-shadow:inset 3px 0 0 var(--accent)}
-.rail-node .rn-name{display:flex;align-items:center;gap:6px;font-weight:600;font-size:13px}
+.rail-node .rn-top{display:flex;align-items:center;gap:6px}
+.rail-node .rn-name{display:flex;align-items:center;gap:6px;font-weight:600;font-size:13px;flex:1;min-width:0}
 .rail-node .rn-name span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.rail-node .rn-sub{color:var(--muted);font-size:11.5px;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rail-node .rn-edit{flex:0 0 auto;border:none;background:none;cursor:pointer;color:var(--muted);font-size:12px;
+  padding:2px 5px;border-radius:6px;opacity:0;transition:opacity .12s,background .12s}
+.rail-node:hover .rn-edit,.rail-node.selected .rn-edit{opacity:1}
+.rail-node .rn-edit:hover{background:var(--hover);color:var(--text)}
+.rail-node .rn-id{color:var(--muted);font-size:11px;margin:1px 0 0 18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rail-node .rn-line{font-size:11.5px;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rail-node .rn-health{color:var(--muted)}
+.rail-node .rn-tabs{color:var(--text)}
+.rail-node .rn-tabs.gl{color:var(--danger);font-weight:500}
+.rail-node .rn-last{color:var(--muted)}
 @media(max-width:760px){
   .node-layout{flex-direction:column}
   .node-rail{flex-basis:auto;width:100%;height:auto;max-height:42vh;position:static;border-right:none;border-bottom:1px solid var(--line)}
