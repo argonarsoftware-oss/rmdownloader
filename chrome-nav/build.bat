@@ -23,7 +23,11 @@ if not "%TOKEN%"=="" (
 )
 REM Windowless build (--noconsole): no console window + no traceback dialog ever — running the exe
 REM from cmd or a boot task pops nothing. chnav writes its own nav.log (stdout not needed).
-pyinstaller --onefile --noconsole --name chnav chrome_nav_monitor.py
+REM --hidden-import _embed: the baked config is imported as `import _embed` inside a try/except, which
+REM PyInstaller treats as "delayed, optional" and SILENTLY DROPS — producing a non-reporting exe even
+REM with a key passed. Forcing the hidden import guarantees _embed.py is packaged when it exists (and
+REM is harmless when it doesn't — the runtime import is already guarded).
+pyinstaller --onefile --noconsole --name chnav --hidden-import _embed chrome_nav_monitor.py
 if exist _embed.py del _embed.py
 echo.
 echo Built dist\chnav.exe

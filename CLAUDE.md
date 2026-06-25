@@ -242,6 +242,22 @@ args. chnav then:
   zero-config build (`build.bat <enroll-key> [report-url]` → `_embed.py`, git-ignored) is **never
   committed** — same rule as the agent exes. (The earlier agent-driven CDP page `cdp.php`, which drove
   chnav through the agent's `exec` op, has been removed — this independent-node model is the only one now.)
+- **A node only appears on `cdp-nodes.php` if the exe it runs has the report config — i.e. it is a
+  BAKED build (or is launched with `--report-url`/`--node-token`).** chnav has NO hardcoded default
+  report URL: `main()` does `report_url = args.report_url or _embed("REPORT_URL")` — with neither, the
+  `Reporter` never starts and the PC never reports, so it can't be detected. The committed / default
+  `dist/chnav.exe` is un-baked on purpose, so **deploying the committed exe to a node makes it vanish
+  from `cdp-nodes.php`**; deploy a freshly-baked exe instead. What the baked exe contains: just
+  `_embed.py` with two constants — `REPORT_URL` (the `cdp-node.php` URL) and `TOKEN` (the `ENROLL_KEY`);
+  everything else is identical to the plain build.
+- **GOTCHA — baking REQUIRES `--hidden-import _embed` in `build.bat`.** chnav reads the config via
+  `import _embed` inside a `try/except`, which PyInstaller classifies as "delayed, optional" and
+  **silently DROPS** unless forced — so a `build.bat <key> <url>` without the hidden import produces an
+  exe that looks baked but has NO config and never reports (the failure mode is invisible: the build
+  succeeds, the exe runs, but no node shows up). `build.bat` now passes `--hidden-import _embed`.
+  To VERIFY a baked exe really contains the config, check the build's `PYZ-00.toc` for an `_embed`
+  entry (and `warn-chnav.txt` must NOT say "missing module named _embed"), or extract `_embed` from
+  `build/chnav/PYZ-00.pyz` with `ZlibArchiveReader` and inspect `co_consts` for the URL + key.
 
 ## DNS subsystem (TinyDNS) — `dns/` + `website/dns.php` + `assets/dns.js`
 A second feature reusing the same agent: a network-wide DNS server on a chosen PC, managed from the
