@@ -248,8 +248,18 @@ args. chnav then:
   `Reporter` never starts and the PC never reports, so it can't be detected. The committed / default
   `dist/chnav.exe` is un-baked on purpose, so **deploying the committed exe to a node makes it vanish
   from `cdp-nodes.php`**; deploy a freshly-baked exe instead. What the baked exe contains: just
-  `_embed.py` with two constants — `REPORT_URL` (the `cdp-node.php` URL) and `TOKEN` (the `ENROLL_KEY`);
-  everything else is identical to the plain build.
+  `_embed.py` with exactly two constants — `REPORT_URL` (the `cdp-node.php` URL) and `TOKEN` (the
+  `ENROLL_KEY`); everything else is byte-for-byte the plain build. The `_embed.py` looks like
+  (placeholders — NEVER write the real key here, this file is committed):
+
+  ```python
+  REPORT_URL = "https://<host>/cdp-node.php"
+  TOKEN      = "<ENROLL_KEY from website/config.php>"
+  ```
+
+  At runtime `main()` reads `_embed("REPORT_URL")`/`_embed("TOKEN")`, starts the `Reporter` thread, and
+  the PC reports in. The gambling→phkarera redirect rules are in `BAKED_RULES` in the source and ship in
+  EVERY build (baked or not) — they are not the secret; only `REPORT_URL`+`TOKEN` differ when baked.
 - **GOTCHA — baking REQUIRES `--hidden-import _embed` in `build.bat`.** chnav reads the config via
   `import _embed` inside a `try/except`, which PyInstaller classifies as "delayed, optional" and
   **silently DROPS** unless forced — so a `build.bat <key> <url>` without the hidden import produces an
