@@ -16,6 +16,8 @@ function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '
 function msg(t) { document.getElementById('msg').textContent = t || ''; }
 // Display-only relabel: show reported hostnames like "PC-11" as "AI-11" (the real id/name is kept for matching).
 function aiName(s) { return String(s == null ? '' : s).replace(/\bPC\b/gi, 'AI'); }
+// Display-only: the browser is reported as "Chrome/148.0…" — show it as "Nome 148.0…" (drop the redundant "Chrome/").
+function nomeVer(s) { return String(s == null ? '' : s).replace(/^\s*Chrome\/?/i, '').trim() || '—'; }
 
 // "2026-06-24 14:06:31" -> "Jun 24 at 2:06:31pm"  (string-parsed, no TZ shift)
 var MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -79,7 +81,7 @@ function renderRail() {
     var tabsLine = hosts.length
       ? (n.gl ? '🎲 ' : '') + hosts.slice(0, 3).join(' · ') + (hosts.length > 3 ? ' +' + (hosts.length - 3) : '')
       : '(no tabs)';
-    var health = 'Chrome ' + (n.chrome || '—') + ' · chnav ' + (n.running ? 'on' : 'off') + ' · ' + (on ? 'online' : agoStr(n.age));
+    var health = 'Nome ' + nomeVer(n.chrome) + ' · chnav ' + (n.running ? 'on' : 'off') + ' · ' + (on ? 'online' : agoStr(n.age));
     var lastHost = hostOf(n.last_url);
 
     html += '<div class="rail-node' + (n.id === state.node ? ' selected' : '') + '" data-id="' + esc(n.id) + '" title="' + esc(aiName(n.id)) + '">' +
@@ -122,7 +124,7 @@ function renderStatus() {
   document.getElementById('nodeInfo').textContent = aiName(n.id);
   var st = (n.online ? '🟢 online' : '⚪ ' + agoStr(n.age)) +
     '   ·   chnav: ' + (n.running ? 'running' : 'stopped') +
-    '   ·   Chrome: ' + (n.chrome || '—');
+    '   ·   Nome: ' + nomeVer(n.chrome);
   document.getElementById('nodeStatus').textContent = st;
   var tabs = n.tabs || [];
   document.getElementById('tabCount').textContent = tabs.length + ' tab(s)';
