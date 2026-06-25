@@ -193,7 +193,7 @@ function renderFeed() {
   document.getElementById('feedRows').innerHTML = rows || '<tr><td colspan="3" class="muted">no events yet</td></tr>';
   document.getElementById('feedMore').hidden = !state.cursor;
   var al = document.getElementById('feedAlert');
-  if (gl > 0) { al.className = 'alert warn'; al.innerHTML = '🎲 <b>GL related activity</b> — ' + gl + ' navigation(s) to gambling domains in this view.'; al.hidden = false; }
+  if (gl > 0) { al.className = 'alert warn'; al.innerHTML = '🎲 <b>GL related activity</b> — ' + gl + ' navigation(s) to GL domains in this view.'; al.hidden = false; }
   else { al.hidden = true; }
 }
 
