@@ -65,14 +65,14 @@
     <span class="pill">Page: <b>cdp.php</b> (🧭 CDP)</span>
     <span class="pill">Tool: <b>chnav.exe</b></span>
     <span class="pill">Rules file: <b>blt.txt</b></span>
-    <span class="pill">Protocol: <b>Nome DevTools Protocol</b></span>
+    <span class="pill">Protocol: <b>Chrome DevTools Protocol</b></span>
   </div>
 
   <div class="note">
     <b>How it fits together:</b> the <b>🧭 CDP</b> page has <b>no backend of its own</b> — exactly like the DNS
     Manager. <code class="inline">cdp.js</code> sends PowerShell to the AI through the agent's
     <code class="inline">exec</code> op to launch <code class="inline">chnav.exe</code> and tail its log output back
-    into the browser. <code class="inline">chnav.exe</code> attaches to Nome over the <b>Nome DevTools
+    into the browser. <code class="inline">chnav.exe</code> attaches to Nome over the <b>Chrome DevTools
     Protocol</b> (browser-level, so it covers every tab), prints navigation, and enforces the rules in
     <code class="inline">blt.txt</code>.
   </div>
@@ -131,7 +131,7 @@ news.example        warn  Back to work please</pre></div>
   </div>
 
   <h2><span class="n">6</span> How it works under the hood</h2>
-  <p>Launching Nome with <code class="inline">--remote-debugging-port</code> exposes the <b>Nome DevTools
+  <p>Launching Nome with <code class="inline">--remote-debugging-port</code> exposes the <b>Chrome DevTools
      Protocol</b>. <code class="inline">chnav.exe</code> attaches at the <b>browser</b> level and auto-attaches to
      every tab, so rules apply everywhere. Notable details:</p>
   <ul>
