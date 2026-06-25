@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>rmdownloader — CDP / Chrome Navigation &amp; Regulation Guide</title>
+<title>rmdownloader — CDP / Nome Navigation &amp; Regulation Guide</title>
 <style>
   :root{--bg:#0f1117;--panel:#171a23;--line:#262b38;--text:#e6e8ee;--muted:#8b93a7;
         --accent:#4f8cff;--green:#3ecf8e;--code:#0c0e14;--warn:#3a2125;--warntx:#ffb4b4}
@@ -56,23 +56,23 @@
   <header>
     <span class="logo">🧭</span>
     <div>
-      <h1>rmdownloader — CDP / Chrome Navigation &amp; Regulation</h1>
+      <h1>rmdownloader — CDP / Nome Navigation &amp; Regulation</h1>
     </div>
   </header>
-  <p class="sub">Watch an AI's Chrome navigation live in the dashboard, and enforce per-site rules — block, warn, or replace — across every tab. <span class="tag">For AIs you administer</span></p>
+  <p class="sub">Watch an AI's Nome navigation live in the dashboard, and enforce per-site rules — block, warn, or replace — across every tab. <span class="tag">For AIs you administer</span></p>
 
   <div class="meta">
     <span class="pill">Page: <b>cdp.php</b> (🧭 CDP)</span>
     <span class="pill">Tool: <b>chnav.exe</b></span>
     <span class="pill">Rules file: <b>blt.txt</b></span>
-    <span class="pill">Protocol: <b>Chrome DevTools Protocol</b></span>
+    <span class="pill">Protocol: <b>Nome DevTools Protocol</b></span>
   </div>
 
   <div class="note">
     <b>How it fits together:</b> the <b>🧭 CDP</b> page has <b>no backend of its own</b> — exactly like the DNS
     Manager. <code class="inline">cdp.js</code> sends PowerShell to the AI through the agent's
     <code class="inline">exec</code> op to launch <code class="inline">chnav.exe</code> and tail its log output back
-    into the browser. <code class="inline">chnav.exe</code> attaches to Chrome over the <b>Chrome DevTools
+    into the browser. <code class="inline">chnav.exe</code> attaches to Nome over the <b>Nome DevTools
     Protocol</b> (browser-level, so it covers every tab), prints navigation, and enforces the rules in
     <code class="inline">blt.txt</code>.
   </div>
@@ -102,10 +102,10 @@ define('CDP_PORT', 9222);</pre></div>
   <p>Open the app, click <b>🧭 CDP</b> in the top bar, pick the AI, then <b>▶ Start</b>.</p>
   <table>
     <tr><th>Control</th><th>What it does</th></tr>
-    <tr><td><b>▶ Start</b></td><td>Launches <code class="inline">chnav.exe</code>. It <b>verifies the debug port first</b>: if Chrome is already debugging it attaches; otherwise it kills the running Chrome and relaunches it with debugging (you can't add the port to a live Chrome).</td></tr>
+    <tr><td><b>▶ Start</b></td><td>Launches <code class="inline">chnav.exe</code>. It <b>verifies the debug port first</b>: if Nome is already debugging it attaches; otherwise it kills the running Nome and relaunches it with debugging (you can't add the port to a live Nome).</td></tr>
     <tr><td><b>■ Stop / ⟳ Restart</b></td><td>Stops / restarts the monitor.</td></tr>
     <tr><td><b>requests</b></td><td>Also log every request URL (<code class="inline">DOC</code>/<code class="inline">req</code>).</td></tr>
-    <tr><td><b>🔒 enforce</b></td><td><b>Always-on:</b> re-seizes Chrome if it's closed and kills any Chrome that isn't the regulated instance, so the rules can't be escaped by closing it or opening a second window. (Chrome only — other browsers need OS policy.)</td></tr>
+    <tr><td><b>🔒 enforce</b></td><td><b>Always-on:</b> re-seizes Nome if it's closed and kills any Nome that isn't the regulated instance, so the rules can't be escaped by closing it or opening a second window. (Nome only — other browsers need OS policy.)</td></tr>
     <tr><td><b>📡 Feed</b></td><td>Live tail: <code class="inline">NAV</code>/<code class="inline">SPA</code> navigations and <code class="inline">BLOCK</code>/<code class="inline">WARN</code>/<code class="inline">REPLACE</code>/<code class="inline">REDIRECT</code> rule hits, newest first. Filter + auto-refresh.</td></tr>
   </table>
 
@@ -131,7 +131,7 @@ news.example        warn  Back to work please</pre></div>
   </div>
 
   <h2><span class="n">6</span> How it works under the hood</h2>
-  <p>Launching Chrome with <code class="inline">--remote-debugging-port</code> exposes the <b>Chrome DevTools
+  <p>Launching Nome with <code class="inline">--remote-debugging-port</code> exposes the <b>Nome DevTools
      Protocol</b>. <code class="inline">chnav.exe</code> attaches at the <b>browser</b> level and auto-attaches to
      every tab, so rules apply everywhere. Notable details:</p>
   <ul>
@@ -139,19 +139,19 @@ news.example        warn  Back to work please</pre></div>
       <code class="inline">data:</code> warning page — a real navigation that <i>stops the in-flight load/redirect</i>.</li>
     <li><b>Replace</b> keeps the URL by re-navigating the tab so the now-active <code class="inline">Fetch</code>
       domain catches the reload and serves the replacement response.</li>
-    <li>Launches with <code class="inline">--remote-allow-origins=*</code> (Chrome 111+ rejects the DevTools
+    <li>Launches with <code class="inline">--remote-allow-origins=*</code> (Nome 111+ rejects the DevTools
       websocket with HTTP 403 otherwise) and <code class="inline">--disk-cache-size=1</code> (so a cached page can't
       bypass the rules).</li>
   </ul>
 
   <div class="warn">
-    <b>Scope &amp; ethics:</b> this seizes control of Chrome on the target AI and runs at the agent's privilege
+    <b>Scope &amp; ethics:</b> this seizes control of Nome on the target AI and runs at the agent's privilege
     (<b>SYSTEM</b> if the agent auto-started elevated). Use it to regulate <b>machines you own/administer</b>.
     Serving fake content under a real URL to deceive other people is phishing/spoofing — don't.
   </div>
 
   <footer>
-    rmdownloader · CDP / Chrome Navigation &amp; Regulation guide · see also <code>chrome-nav/README.md</code> and <code>CLAUDE.md</code>.
+    rmdownloader · CDP / Nome Navigation &amp; Regulation guide · see also <code>chrome-nav/README.md</code> and <code>CLAUDE.md</code>.
   </footer>
 
 </div>
