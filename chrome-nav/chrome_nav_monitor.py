@@ -173,6 +173,23 @@ def kill_foreign_chrome(port):
         pass
 
 
+_KILL_INFLIGHT = {"running": False}
+
+def kill_foreign_chrome_async(port):
+    """Run kill_foreign_chrome on a BACKGROUND thread so the slow PowerShell CIM query never blocks
+    the CDP event loop — blocking it stalls in-flight document loads and new-tab startup (the periodic
+    lag). Skips if a previous sweep is still running so they can't pile up."""
+    if platform.system() != "Windows" or _KILL_INFLIGHT["running"]:
+        return
+    _KILL_INFLIGHT["running"] = True
+    def _work():
+        try:
+            kill_foreign_chrome(port)
+        finally:
+            _KILL_INFLIGHT["running"] = False
+    threading.Thread(target=_work, daemon=True).start()
+
+
 # --------------------------------------------------------------------------- #
 # Launch Chrome
 # --------------------------------------------------------------------------- #
@@ -186,10 +203,11 @@ def launch_chrome(chrome_path, port, user_data_dir):
         # connecting origin is allow-listed. We connect from 127.0.0.1, so allow it.
         "--remote-allow-origins=*",
         "--user-data-dir=%s" % user_data_dir,
-        # Effectively disable the disk cache so a previously-cached page can't be
-        # served without a network request — that would bypass Fetch interception
-        # and let a ruled (blocked/replaced) site slip through.
-        "--disk-cache-size=1",
+        # NOTE: the disk cache is left ENABLED (default size) for speed — disabling it made every
+        # asset re-download on every load. Enforcement does NOT need it off: block/warn/redirect fire
+        # on Page.frameNavigated (which happens even on a cache hit), and the only action that needs a
+        # live network request — 'replace' — turns the cache off per-tab via Network.setCacheDisabled
+        # (see run_browser), and only when a replace rule actually exists.
         "--no-first-run",
         "--no-default-browser-check",
         "--disable-popup-blocking",
@@ -752,6 +770,18 @@ class RuleSet(object):
     def count(self):
         return len(self._exact) + len(self._wild) + len(self._contains)
 
+    def has_replace(self):
+        """True if any rule uses the 'replace' action — the ONLY action whose response-swap needs
+        the HTTP cache disabled. block/warn/redirect all key off Page.frameNavigated (which fires
+        even on a cache hit), so they stay correct with the cache ON."""
+        if any(r.get("action") == "replace" for r in self._exact.values()):
+            return True
+        if any(r.get("action") == "replace" for _, r in self._wild):
+            return True
+        if any(r.get("action") == "replace" for _, r in self._contains):
+            return True
+        return False
+
     def match(self, host):
         if not host:
             return None
@@ -988,6 +1018,7 @@ def run_browser(args, info, rules, stop):
         log("-" * 60)
         next_reload = time.time() + 2
         next_check = time.time() + 2
+        next_kill = time.time() + 15
         next_sweep = time.time() + 3
         devtools_misses = 0
         while not stop["flag"]:
@@ -1005,10 +1036,13 @@ def run_browser(args, info, rules, stop):
                         break
                 else:
                     devtools_misses = 0
-                    # While regulating (guard or persist): kill any Chrome that isn't our instance.
-                    if getattr(args, "kill_foreign", False):
-                        kill_foreign_chrome(args.port)
                 next_check = now + 2
+            # While regulating (guard or persist): kill any Chrome that isn't our instance — on its OWN
+            # slower 15s cadence and on a BACKGROUND thread, so the (slow) PowerShell CIM sweep never
+            # blocks the CDP event loop. (Was every 2s inline, which caused the periodic load stalls.)
+            if getattr(args, "kill_foreign", False) and devtools_misses == 0 and now >= next_kill:
+                kill_foreign_chrome_async(args.port)
+                next_kill = now + 15
             # Keep detecting ruled domains and redirect them, even if an event was missed.
             if rules and now >= next_sweep:
                 _sweep_redirect(client, args.port, rules, sessions, pending)
@@ -1038,9 +1072,13 @@ def run_browser(args, info, rules, stop):
                     client.send("Page.enable", None, s)
                     client.send("Network.enable", None, s)
                     if rules:
-                        # Fetch is only needed for the 'replace' response-swap. Disable the
-                        # cache so a cached page still triggers the network request Fetch sees.
-                        client.send("Network.setCacheDisabled", {"cacheDisabled": True}, s)
+                        # Keep the HTTP cache ON for speed. Only 'replace' needs it off (its response-
+                        # swap must see the live network request); block/warn/redirect fire on
+                        # Page.frameNavigated, which happens even on a cache hit, so they stay correct
+                        # with the cache enabled. So disable the cache per-tab ONLY when a replace rule
+                        # currently exists — otherwise normal browsing keeps full cache speed.
+                        if rules.has_replace():
+                            client.send("Network.setCacheDisabled", {"cacheDisabled": True}, s)
                         rid = client.send("Fetch.enable", {"patterns": [
                             {"urlPattern": "*", "resourceType": "Document",
                              "requestStage": "Request"}]}, s)
