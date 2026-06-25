@@ -24,31 +24,43 @@ function fmtTs(s) {
   return (MON[(+m[2]) - 1] || m[2]) + ' ' + (+m[3]) + ' at ' + h12 + ':' + m[5] + (m[6] ? ':' + m[6] : '') + ap;
 }
 
-var nodeSel = document.getElementById('nodeSel');
-
-// ---- node picker ----
+// ---- node rail (sidebar device picker) ----
 function loadNodes(preferId) {
   return cdp({ action: 'nodes' }).then(function (d) {
-    nodeSel.innerHTML = '';
     if (!d.ok || !d.nodes || !d.nodes.length) {
-      state.node = null;
+      state.nodes = []; state.node = null;
+      renderRail();
       msg(d && d.db === false ? 'MySQL not configured — independent nodes need the database.' : 'No chnav nodes have reported yet.');
       return;
     }
     state.nodes = d.nodes;
-    d.nodes.forEach(function (n) {
-      var o = document.createElement('option');
-      o.value = n.id;
-      o.textContent = (n.online ? '🟢 ' : '⚪ ') + n.name + (n.online ? '' : ' (' + agoStr(n.age) + ')');
-      nodeSel.appendChild(o);
-    });
     var saved = null; try { saved = localStorage.getItem('rmd_cdpnode'); } catch (e) {}
-    var prefer = preferId || saved;
+    var prefer = preferId || state.node || saved;
     var has = function (id) { return d.nodes.some(function (n) { return n.id === id; }); };
     var pick = (prefer && has(prefer)) ? prefer : d.nodes[0].id;
-    nodeSel.value = pick;
-    selectNode(pick);
+    if (pick !== state.node) {
+      selectNode(pick);          // selection changed → load that node's rules + feed
+    } else {
+      renderRail();              // same node on refresh → update statuses in place,
+      renderStatus();            // WITHOUT reloading rules (no clobber) or resetting feed paging
+    }
   });
+}
+
+function renderRail() {
+  var el = document.getElementById('nodeRailList');
+  if (!state.nodes.length) { el.innerHTML = '<div class="rail-empty muted">no nodes</div>'; return; }
+  var html = '';
+  state.nodes.forEach(function (n) {
+    var on = n.online;
+    var sub = on ? ((n.running ? 'running' : 'stopped') + ' · ' + ((n.tabs || []).length) + ' tab(s)')
+                 : agoStr(n.age);
+    html += '<div class="rail-node' + (n.id === state.node ? ' selected' : '') +
+      '" data-id="' + esc(n.id) + '" title="' + esc(n.id) + '">' +
+      '<div class="rn-name">' + (on ? '🟢' : '⚪') + ' <span>' + esc(n.name || n.id) + '</span></div>' +
+      '<div class="rn-sub">' + esc(sub) + '</div></div>';
+  });
+  el.innerHTML = html;
 }
 
 function agoStr(age) {
@@ -67,6 +79,7 @@ function curNode() {
 function selectNode(id) {
   state.node = id;
   try { localStorage.setItem('rmd_cdpnode', id); } catch (e) {}
+  renderRail();
   renderStatus();
   loadRules();
   loadFeed(true);
@@ -156,14 +169,18 @@ function renderFeed() {
 }
 
 // ---- wiring ----
-nodeSel.onchange = function () { selectNode(this.value); };
-document.getElementById('btnRefresh').onclick = function () { loadNodes(state.node); };
+document.getElementById('nodeRailList').addEventListener('click', function (e) {
+  var row = e.target.closest('[data-id]');
+  if (row) { var id = row.getAttribute('data-id'); if (id && id !== state.node) selectNode(id); }
+});
+document.getElementById('btnRefresh').onclick = function () { loadNodes(); };
 document.getElementById('btnFeedRefresh').onclick = function () { loadFeed(true); };
 document.getElementById('feedMore').onclick = function () { loadFeed(false); };
 var ft = null;
 document.getElementById('feedFilter').oninput = function () { clearTimeout(ft); ft = setTimeout(function () { loadFeed(true); }, 300); };
 document.getElementById('feedAuto').onchange = function () {
-  if (this.checked) { state.autoTimer = setInterval(function () { loadNodes(state.node); }, 5000); }
+  // live mode: refresh node statuses in place + pull newest feed (no rules clobber)
+  if (this.checked) { state.autoTimer = setInterval(function () { loadNodes(); loadFeed(true); }, 5000); }
   else { clearInterval(state.autoTimer); state.autoTimer = null; }
 };
 document.getElementById('btnFeedClear').onclick = function () {

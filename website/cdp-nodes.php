@@ -13,7 +13,6 @@ require_login();
 <body>
 <header class="topbar">
   <div class="brand">🧭 CDP Nodes</div>
-  <select id="nodeSel" class="agent-select" title="chnav node"></select>
   <div id="nodeInfo" class="muted"></div>
   <div class="spacer"></div>
   <a class="btn ghost" href="index.php">🗂 Files</a>
@@ -22,10 +21,16 @@ require_login();
   <a class="btn ghost" href="logout.php">Sign out</a>
 </header>
 
+<div class="node-layout">
+  <aside class="node-rail">
+    <div class="rail-head">Nodes<span class="spacer"></span>
+      <button class="btn ghost" id="btnRefresh" title="Refresh nodes">⟳</button></div>
+    <div id="nodeRailList" class="rail-list"><div class="rail-empty muted">loading…</div></div>
+  </aside>
+  <div class="node-body">
+
 <div class="ipbar">
   <span id="nodeStatus" class="muted">select a node…</span>
-  <span class="spacer"></span>
-  <button class="btn ghost" id="btnRefresh">⟳ Refresh</button>
 </div>
 
 <main class="dns-main">
@@ -71,6 +76,8 @@ require_login();
     <div style="padding:10px 14px"><button class="btn ghost" id="feedMore" hidden>Load older ↓</button></div>
   </section>
 </main>
+  </div><!-- /.node-body -->
+</div><!-- /.node-layout -->
 <div id="msg" class="status muted"></div>
 
 <script src="assets/cdp-nodes.js"></script>
