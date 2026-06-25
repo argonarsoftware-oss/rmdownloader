@@ -161,6 +161,10 @@ tr:hover .row-act{visibility:visible}
 .dns-head{display:flex;align-items:center;gap:8px;padding:13px 16px;border-bottom:1px solid var(--line);
   font-weight:600;flex-wrap:wrap;background:var(--panel-2)}
 .dns-head .muted{font-weight:400}
+.dns-head.clickable{cursor:pointer;user-select:none}
+.dns-caret{display:inline-block;font-size:11px;color:var(--muted);transition:transform .15s}
+.dns-card.collapsed .dns-caret{transform:rotate(-90deg)}
+.dns-card.collapsed .dns-body{display:none}
 .dns-edit{width:100%;height:180px;border:none;background:var(--code);color:var(--text);padding:14px;
   font:13px/1.6 ui-monospace,Consolas,Menlo,monospace;resize:vertical;outline:none;display:block}
 .log-wrap{max-height:340px;overflow:auto}

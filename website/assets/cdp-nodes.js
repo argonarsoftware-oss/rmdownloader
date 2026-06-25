@@ -112,6 +112,18 @@ document.getElementById('saveRules').onclick = function () {
   });
 };
 
+// ---- collapsible Site rules (default collapsed, choice persisted) ----
+(function () {
+  var card = document.getElementById('rulesCard'), head = document.getElementById('rulesHead');
+  if (!card || !head) return;
+  try { if (localStorage.getItem('rmd_cdprules_open') === '1') card.classList.remove('collapsed'); } catch (e) {}
+  head.addEventListener('click', function (e) {
+    if (e.target.closest('button')) return; // don't toggle when hitting Save
+    var open = card.classList.toggle('collapsed') === false;
+    try { localStorage.setItem('rmd_cdprules_open', open ? '1' : '0'); } catch (e2) {}
+  });
+})();
+
 // ---- navigation feed ----
 var KNOWN = { NAV: 1, SPA: 1, DOC: 1, req: 1, BLOCK: 1, WARN: 1, REPLACE: 1, REDIRECT: 1 };
 function loadFeed(reset) {

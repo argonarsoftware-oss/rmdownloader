@@ -41,14 +41,16 @@ require_login();
     <div id="tabList" class="ip-list" style="padding:8px 2px"><span class="muted">—</span></div>
   </section>
 
-  <section class="dns-card">
-    <div class="dns-head">🛡 Site rules <span class="muted">blt.txt · pulled by chnav (hot-reloads live)</span>
+  <section class="dns-card collapsed" id="rulesCard">
+    <div class="dns-head clickable" id="rulesHead"><span class="dns-caret">▾</span> 🛡 Site rules <span class="muted">blt.txt · pulled by chnav (hot-reloads live)</span>
       <span class="spacer"></span><span id="rulesVer" class="muted" style="margin-right:8px"></span>
       <button class="btn" id="saveRules">Save</button></div>
-    <textarea id="rulesText" class="dns-edit" spellcheck="false" placeholder="bet88.ph        redirect https://phkarera.com/&#10;*.casino.com    block&#10;ads.example.com warn Not allowed here"></textarea>
-    <div class="muted" style="font-size:12px;padding:0 14px 12px">
-      <code>domain action target</code> — actions: <b>redirect</b> &lt;url&gt; (URL changes), <b>block</b>, <b>warn</b> &lt;msg&gt;,
-      <b>replace</b> &lt;url&gt; (keeps URL). Bare domain = block; <code>*.x</code> wildcard; a bare domain also covers subdomains.
+    <div class="dns-body">
+      <textarea id="rulesText" class="dns-edit" spellcheck="false" placeholder="bet88.ph        redirect https://phkarera.com/&#10;*.casino.com    block&#10;ads.example.com warn Not allowed here"></textarea>
+      <div class="muted" style="font-size:12px;padding:0 14px 12px">
+        <code>domain action target</code> — actions: <b>redirect</b> &lt;url&gt; (URL changes), <b>block</b>, <b>warn</b> &lt;msg&gt;,
+        <b>replace</b> &lt;url&gt; (keeps URL). Bare domain = block; <code>*.x</code> wildcard; a bare domain also covers subdomains.
+      </div>
     </div>
   </section>
 
