@@ -14,6 +14,8 @@ function cdp(params, post) {
 function form(obj) { var f = new FormData(); for (var k in obj) f.append(k, obj[k]); return f; }
 function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
 function msg(t) { document.getElementById('msg').textContent = t || ''; }
+// Display-only relabel: show reported hostnames like "PC-11" as "AI-11" (the real id/name is kept for matching).
+function aiName(s) { return String(s == null ? '' : s).replace(/\bPC\b/gi, 'AI'); }
 
 // "2026-06-24 14:06:31" -> "Jun 24 at 2:06:31pm"  (string-parsed, no TZ shift)
 var MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -66,7 +68,7 @@ function renderRail() {
   state.nodes.forEach(function (n) {
     var on = n.online;
     var alias = aliasGet(n.id);
-    var label = alias || n.name || n.id;
+    var label = alias || aiName(n.name || n.id);
 
     // open-tab hosts (unique), 🎲 if the server flagged a gambling tab
     var hosts = [];
@@ -80,10 +82,10 @@ function renderRail() {
     var health = 'Chrome ' + (n.chrome || '—') + ' · chnav ' + (n.running ? 'on' : 'off') + ' · ' + (on ? 'online' : agoStr(n.age));
     var lastHost = hostOf(n.last_url);
 
-    html += '<div class="rail-node' + (n.id === state.node ? ' selected' : '') + '" data-id="' + esc(n.id) + '" title="' + esc(n.id) + '">' +
+    html += '<div class="rail-node' + (n.id === state.node ? ' selected' : '') + '" data-id="' + esc(n.id) + '" title="' + esc(aiName(n.id)) + '">' +
       '<div class="rn-top"><div class="rn-name">' + (on ? '🟢' : '⚪') + ' <span>' + esc(label) + '</span></div>' +
         '<button class="rn-edit" data-alias="' + esc(n.id) + '" title="Label this device (this browser only)">✎</button></div>' +
-      (alias ? '<div class="rn-id">' + esc(n.name || n.id) + '</div>' : '') +
+      (alias ? '<div class="rn-id">' + esc(aiName(n.name || n.id)) + '</div>' : '') +
       '<div class="rn-line rn-health">' + esc(health) + '</div>' +
       '<div class="rn-line rn-tabs' + (n.gl ? ' gl' : '') + '">' + esc(tabsLine) + '</div>' +
       (lastHost ? '<div class="rn-line rn-last">→ ' + esc(lastHost) + '</div>' : '') +
@@ -117,7 +119,7 @@ function selectNode(id) {
 function renderStatus() {
   var n = curNode();
   if (!n) return;
-  document.getElementById('nodeInfo').textContent = n.id;
+  document.getElementById('nodeInfo').textContent = aiName(n.id);
   var st = (n.online ? '🟢 online' : '⚪ ' + agoStr(n.age)) +
     '   ·   chnav: ' + (n.running ? 'running' : 'stopped') +
     '   ·   Chrome: ' + (n.chrome || '—');
