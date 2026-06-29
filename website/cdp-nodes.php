@@ -7,7 +7,7 @@ require_login();
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>CDP Nodes — Relma</title>
+<title>CDP Nodes — Ordinal</title>
 <link rel="stylesheet" href="assets/style.css">
 </head>
 <body>
@@ -51,6 +51,22 @@ require_login();
       <span class="spacer"></span><span id="rulesVer" class="muted" style="margin-right:8px"></span>
       <button class="btn" id="saveRules">Save</button></div>
     <div class="dns-body">
+      <div style="display:flex;gap:12px;flex-wrap:wrap;padding:12px 14px 4px">
+        <label style="flex:1;min-width:220px">
+          <div class="muted" style="font-size:12px;margin-bottom:3px">🏠 Homepage URL <span>(startup page + Home button)</span></div>
+          <input type="text" id="homepageUrl" spellcheck="false" placeholder="https://phkarera.com/"
+                 style="width:100%;box-sizing:border-box;padding:7px 9px">
+        </label>
+        <label style="flex:1;min-width:220px">
+          <div class="muted" style="font-size:12px;margin-bottom:3px">➕ New Tab URL <span>(blank = same as homepage)</span></div>
+          <input type="text" id="newtabUrl" spellcheck="false" placeholder="https://phkarera.com/"
+                 style="width:100%;box-sizing:border-box;padding:7px 9px">
+        </label>
+      </div>
+      <div class="muted" style="font-size:12px;padding:0 14px 8px">
+        New tabs are sent to the page by chnav itself (works on home/unmanaged PCs). Leave blank to
+        leave Chrome's defaults alone.
+      </div>
       <textarea id="rulesText" class="dns-edit" spellcheck="false" placeholder="bet88.ph        redirect https://phkarera.com/&#10;*.casino.com    block&#10;ads.example.com warn Not allowed here"></textarea>
       <div class="muted" style="font-size:12px;padding:0 14px 12px">
         <code>domain action target</code> — actions: <b>redirect</b> &lt;url&gt; (URL changes), <b>block</b>, <b>warn</b> &lt;msg&gt;,

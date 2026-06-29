@@ -142,17 +142,40 @@ function renderStatus() {
 }
 
 // ---- rules editor ----
+// homepage/newtab are stored as directive lines INSIDE the rules text (chnav parses them); the UI
+// pulls them out into their own fields on load and folds them back in on save, so there's one source
+// of truth (cdp_rules) and no schema change.
+function splitDirectives(text) {
+  var hp = '', nt = '', rest = [];
+  (text || '').split(/\r?\n/).forEach(function (line) {
+    var m = line.match(/^\s*(homepage|newtab)\s+(\S.*)$/i);
+    if (m) { if (m[1].toLowerCase() === 'homepage') hp = m[2].trim(); else nt = m[2].trim(); }
+    else rest.push(line);
+  });
+  return { homepage: hp, newtab: nt, rest: rest.join('\n') };
+}
+function joinDirectives() {
+  var hp = document.getElementById('homepageUrl').value.trim();
+  var nt = document.getElementById('newtabUrl').value.trim();
+  var head = '';
+  if (hp) head += 'homepage ' + hp + '\n';
+  if (nt) head += 'newtab ' + nt + '\n';
+  return head + document.getElementById('rulesText').value;
+}
 function loadRules() {
   cdp({ action: 'rules', node: state.node }).then(function (d) {
     if (!d.ok) return;
-    document.getElementById('rulesText').value = d.rules || '';
+    var p = splitDirectives(d.rules || '');
+    document.getElementById('homepageUrl').value = p.homepage;
+    document.getElementById('newtabUrl').value = p.newtab;
+    document.getElementById('rulesText').value = p.rest;
     document.getElementById('rulesVer').textContent = 'v' + (d.version || 0);
   });
 }
 document.getElementById('saveRules').onclick = function () {
   if (!state.node) return;
   msg('Saving rules…');
-  cdp({ action: 'saverules', node: state.node }, form({ rules: document.getElementById('rulesText').value })).then(function (d) {
+  cdp({ action: 'saverules', node: state.node }, form({ rules: joinDirectives() })).then(function (d) {
     if (d.ok) { document.getElementById('rulesVer').textContent = 'v' + d.version; msg('Rules saved — chnav will pull them shortly.'); }
     else { msg('Save failed: ' + (d.error || '')); }
   });

@@ -153,6 +153,27 @@ deployed. (The earlier agent-driven page `cdp.php`/`cdp.js`, which drove `chnav.
   `blt.txt` (saved to `cdp_rules` via `cdp-log.php`; chnav pulls + hot-reloads live). Plus open-tabs chips, node
   status, and a live nav feed. The node pushes its tabs / Chrome version / `blt.txt` / nav events to MySQL
   (`cdp_nodes`/`cdp_events`/`cdp_rules`); the page reads them back through `cdp-log.php`.
+- **Homepage + New-Tab control (`homepage <url>` / `newtab <url>`):** chnav can set the regulated Chrome's
+  **startup page + Home button** and redirect **new tabs** to a chosen page. Two directives, managed live
+  from the `cdp-nodes.php` rules editor (the Homepage URL / New Tab URL fields, stored as directive lines
+  inside the pulled `blt.txt`, hot-reloaded):
+  - **Homepage** (startup page + Home button) → written into the `--user-data-dir` profile's plain
+    `Preferences` JSON (NOT the HMAC-protected `Secure Preferences`, so no signature needed); applies on the
+    next launch. Scope: the regulated profile only.
+  - **New Tab** → a **runtime redirect**: when a tab lands on `chrome://newtab`, chnav `Page.navigate`s it to
+    the URL. This is what actually works on **home/unmanaged PCs**. It's enforced by `_sweep_newtab` on the
+    ~3s sweep (the `frameNavigated` event for a fresh tab races Page-enable and is usually missed), so a new
+    tab is bounced within a few seconds. Blank ⇒ same as the homepage.
+  - **GOTCHA — the `NewTabPageLocation` enterprise policy does NOT work on unmanaged machines.** Chrome
+    ignores `HKLM\SOFTWARE\Policies\Google\Chrome\*` unless the device is domain/Azure-AD/MDM/cloud-managed
+    (verified on Chrome 149: the registry value is present but ignored). `apply_ntp_policy()` still writes it
+    as a best-effort bonus for *managed* fleets, but the runtime redirect above is the real mechanism. Don't
+    rely on the policy alone.
+  - Source precedence: live `homepage`/`newtab` directive in `blt.txt` > `--homepage`/`--newtab` CLI > baked
+    `_embed("HOMEPAGE")`/`_embed("NEWTAB")` (`build.bat <enroll-key> [report-url] [homepage] [newtab]`) >
+    Chrome default; `newtab` falls back to `homepage`. On the *attach* path the startup/Home-button writes
+    don't apply, but the new-tab redirect still runs. (`resolve_homepage` / `resolve_newtab` /
+    `write_chrome_prefs` / `_sweep_newtab` / `apply_ntp_policy` in `chrome_nav_monitor.py`.)
 - **Config:** `CDP_DIR` (folder holding `chnav.exe` + `blt.txt`) and `CDP_PORT` (default 9222) in `config.php`,
   overridable per-PC. `chnav.exe` is built with `cd chrome-nav && build.bat` (PyInstaller) → `dist/chnav.exe`
   and is **committed to git** (rebuild + commit when the `.py` changes; see Conventions), then deployed to
@@ -352,9 +373,9 @@ Two ways a PC becomes known to the site:
   Security: only a holder of `ENROLL_KEY` can enroll, and an agent can only expose its OWN machine.
 
 ## Conventions
-- **"Relma" is our own coined brand word for the user-facing UI — it is NOT a typo for "remote".**
+- **"Ordinal" is our own coined brand word for the user-facing UI — it is NOT a typo for "remote".**
   In anything a user sees in the browser (page titles, headings, the header brand, UI labels), use
-  **Relma** instead of the word "remote" (e.g. "Relma File Manager"). This is a deliberate rename, so
+  **Ordinal** instead of the word "remote" (e.g. "Ordinal File Manager"). This is a deliberate rename, so
   don't "correct" it back to "Remote". It applies to display text ONLY — code, comments, identifiers,
   git-remote logic, and technical CLI flags (`--remote-debugging-port`, `remote.origin.url`, etc.) keep
   their real names. The project/repo is still `rmdownloader`; "remote-connect"/"reverse-connect" wording

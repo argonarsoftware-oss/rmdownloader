@@ -191,10 +191,103 @@ def kill_foreign_chrome_async(port):
 
 
 # --------------------------------------------------------------------------- #
+# Homepage (startup page + Home button + New Tab Page)
+# --------------------------------------------------------------------------- #
+def resolve_homepage(rules, args):
+    """Effective homepage URL. Precedence (highest first):
+         live 'homepage <url>' directive in blt.txt  >  --homepage CLI  >  baked _embed('HOMEPAGE')
+       Empty string => leave Chrome's defaults alone (launch about:blank, no NTP policy)."""
+    hp = ""
+    if rules:
+        try:
+            hp = rules.homepage()
+        except Exception:
+            hp = ""
+    return hp or getattr(args, "homepage", "") or _embed("HOMEPAGE") or ""
+
+
+# Chrome's new-tab page URLs (a Ctrl+T tab commits one of these as its main-frame URL).
+NEWTAB_URLS = ("chrome://newtab", "chrome://new-tab-page", "chrome://new-tab-page-third-party")
+
+
+def _is_newtab_url(u):
+    u = (u or "").lower()
+    return any(u.startswith(p) for p in NEWTAB_URLS)
+
+
+def resolve_newtab(rules, args):
+    """Effective New-Tab URL. Precedence: live 'newtab <url>' directive > --newtab CLI >
+    baked _embed('NEWTAB') > the homepage (so a single homepage covers new tabs too) > ''."""
+    nt = ""
+    if rules:
+        try:
+            nt = rules.newtab()
+        except Exception:
+            nt = ""
+    nt = nt or getattr(args, "newtab", "") or _embed("NEWTAB")
+    return nt or resolve_homepage(rules, args)
+
+
+def write_chrome_prefs(user_data_dir, homepage):
+    """Set the startup page + Home button in the regulated profile's Preferences. These live in the
+    plain 'Preferences' JSON (NOT the HMAC-protected 'Secure Preferences'), so a direct write needs
+    no signature. We MERGE so the rest of the profile is preserved. Takes effect on the NEXT launch
+    (Chrome reads Preferences only at startup) — which is fine, we write it right before launching.
+    Scope: chnav's --user-data-dir only (regulated-instance-only, per design)."""
+    if not homepage:
+        return
+    try:
+        prof = os.path.join(user_data_dir, "Default")
+        os.makedirs(prof, exist_ok=True)
+        path = os.path.join(prof, "Preferences")
+        data = {}
+        if os.path.isfile(path):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    data = json.load(f) or {}
+            except Exception:
+                data = {}
+        data["homepage"] = homepage
+        data["homepage_is_newtabpage"] = False
+        data.setdefault("browser", {})["show_home_button"] = True
+        sess = data.setdefault("session", {})
+        sess["restore_on_startup"] = 4          # 4 = open a specific set of URLs at startup
+        sess["startup_urls"] = [homepage]
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(data, f)
+        os.replace(tmp, path)                   # atomic — never leave a torn Preferences file
+    except Exception as e:
+        log("homepage: could not write Preferences (%s)" % e)
+
+
+def apply_ntp_policy(url):
+    """Force the New Tab Page browser-wide via Chrome enterprise policy (HKLM). The NTP can't be set
+    from the profile's Preferences, so this is the robust path. chnav runs as SYSTEM under its boot
+    task, so it can write HKLM; the setting then applies to EVERY Chrome on the PC and is locked
+    (greyed-out), surviving updates and profile resets. No-op off Windows or with no URL.
+    NOTE: this is the one piece that is intentionally browser-wide, not regulated-instance-only."""
+    if not url or platform.system() != "Windows":
+        return
+    try:
+        import winreg
+        key = winreg.CreateKeyEx(winreg.HKEY_LOCAL_MACHINE,
+                                 r"SOFTWARE\Policies\Google\Chrome", 0, winreg.KEY_SET_VALUE)
+        try:
+            winreg.SetValueEx(key, "NewTabPageLocation", 0, winreg.REG_SZ, url)
+        finally:
+            winreg.CloseKey(key)
+    except Exception as e:
+        log("homepage: could not set NewTabPageLocation policy (%s)" % e)
+
+
+# --------------------------------------------------------------------------- #
 # Launch Chrome
 # --------------------------------------------------------------------------- #
-def launch_chrome(chrome_path, port, user_data_dir):
-    """Launch Chrome with remote debugging enabled. Returns the Popen handle."""
+def launch_chrome(chrome_path, port, user_data_dir, homepage=None):
+    """Launch Chrome with remote debugging enabled. Returns the Popen handle.
+    If `homepage` is set, it's opened as the startup tab (Preferences are written separately by the
+    caller via write_chrome_prefs so the Home button / startup-URL settings persist too)."""
     os.makedirs(user_data_dir, exist_ok=True)
     args = [
         chrome_path,
@@ -211,7 +304,7 @@ def launch_chrome(chrome_path, port, user_data_dir):
         "--no-first-run",
         "--no-default-browser-check",
         "--disable-popup-blocking",
-        "about:blank",
+        homepage or "about:blank",   # startup tab: the homepage if set, else blank as before
     ]
     log("Launching Chrome: %s" % chrome_path)
     kwargs = {}
@@ -325,8 +418,9 @@ def _exe_dir():
 
 
 def _embed(name):
-    """Baked config — build.bat <enroll-key> [report-url] writes _embed.py with REPORT_URL / TOKEN
-    so the exe is zero-config (no .conf file). Returns '' when nothing was baked in."""
+    """Baked config — build.bat <enroll-key> [report-url] [homepage] writes _embed.py with
+    REPORT_URL / TOKEN (and optionally HOMEPAGE) so the exe is zero-config (no .conf file).
+    Returns '' when the constant wasn't baked in."""
     try:
         import _embed as e
         return getattr(e, name, "") or ""
@@ -700,7 +794,9 @@ class RuleSet(object):
        action:  block (default) | warn <message...> | replace <url> | redirect <url>
        pattern: a domain (also matches its subdomains); '*.domain' = subdomains only;
                 '*keyword*' = match ANY host CONTAINING keyword — catches a brand's rotating
-                mirror domains as a family (e.g. '*jilibet*'). '#' starts a comment."""
+                mirror domains as a family (e.g. '*jilibet*'). '#' starts a comment.
+       Also one directive line:  homepage <url>  — sets the regulated Chrome's startup page +
+                Home button and the browser-wide New Tab Page (see resolve_homepage)."""
     def __init__(self, path, page_path=None):
         self.path = path
         self.page_path = page_path
@@ -709,6 +805,8 @@ class RuleSet(object):
         self._wild = []      # list of (suffix, rule)
         self._contains = []  # list of (keyword, rule) — substring match anywhere in the host
         self._page = None
+        self._homepage = ""  # 'homepage <url>' directive (startup page / home button)
+        self._newtab = ""    # 'newtab <url>' directive (new-tab redirect target)
         self._cache = {}     # replace-URL -> (expires_ts, body_bytes, content_type)
         self.reload()
 
@@ -728,6 +826,17 @@ class RuleSet(object):
                 continue
             parts = s.split(None, 2)
             pattern = parts[0].lower()
+            # 'homepage <url>' / 'newtab <url>' are directives, not host rules. homepage sets the
+            # regulated Chrome's startup page + Home button (profile Preferences); newtab sets the
+            # page chnav sends a fresh tab to (runtime redirect — see run_browser). Keep the URL's
+            # original case. A later (file) directive overrides an earlier (baked) one.
+            if pattern in ("homepage", "newtab"):
+                val = parts[1].strip() if len(parts) > 1 else ""
+                if pattern == "homepage":
+                    self._homepage = val
+                else:
+                    self._newtab = val
+                continue
             action = parts[1].lower() if len(parts) > 1 else "block"
             arg = parts[2].strip() if len(parts) > 2 else ""
             if action not in ("block", "warn", "replace", "redirect"):
@@ -744,6 +853,8 @@ class RuleSet(object):
 
     def reload(self):
         exact, wild, contains = {}, [], []
+        self._homepage = ""   # re-derived from the directives on every reload (baked then file)
+        self._newtab = ""
         # Baked-in defaults FIRST (compiled into the exe — active with no blt.txt at all);
         # file rules below override matching hosts and add new ones.
         self._parse_into(BAKED_RULES, exact, wild, contains)
@@ -769,6 +880,14 @@ class RuleSet(object):
 
     def count(self):
         return len(self._exact) + len(self._wild) + len(self._contains)
+
+    def homepage(self):
+        """The 'homepage <url>' directive from the rules (baked or pulled blt.txt), or ''."""
+        return getattr(self, "_homepage", "") or ""
+
+    def newtab(self):
+        """The 'newtab <url>' directive from the rules (baked or pulled blt.txt), or ''."""
+        return getattr(self, "_newtab", "") or ""
 
     def has_replace(self):
         """True if any rule uses the 'replace' action — the ONLY action whose response-swap needs
@@ -973,6 +1092,45 @@ def _sweep_redirect(client, port, rules, sessions, pending):
             pass
 
 
+def _sweep_newtab(client, port, newtab_url, sessions, done):
+    """Safety net for the new-tab redirect: re-scan every tab and send any one sitting on
+    chrome://newtab to `newtab_url`. Needed because a fresh tab's new-tab navigation commits BEFORE
+    we finish attaching Page to it, so the frameNavigated event is missed (same first-load race as
+    redirect rules). This is the mechanism that works on UNMANAGED PCs (the NewTabPageLocation policy
+    is ignored there). `done` (targetId -> url) stops us re-issuing while the nav is in flight, and is
+    cleared once the tab leaves the new-tab page so a later Ctrl+T on the same tab redirects again."""
+    if not newtab_url:
+        return
+    try:
+        tabs = requests.get("http://127.0.0.1:%d/json" % port, timeout=2).json()
+    except Exception:
+        return
+    by_target = {}
+    for s, tid in sessions.items():
+        by_target[tid] = s
+    live = set()
+    for t in tabs:
+        if t.get("type") != "page":
+            continue
+        tid = t.get("id")
+        live.add(tid)
+        if _is_newtab_url(t.get("url", "")):
+            sid = by_target.get(tid)
+            if not sid or done.get(tid) == newtab_url:
+                continue
+            log("NEWTAB    %s -> %s (sweep)" % (t.get("url", ""), newtab_url))
+            try:
+                client.send("Page.navigate", {"url": newtab_url}, sid)
+                done[tid] = newtab_url
+            except Exception:
+                pass
+        else:
+            done.pop(tid, None)            # left the new-tab page -> allow a future redirect
+    for tid in list(done):                 # forget closed tabs
+        if tid not in live:
+            done.pop(tid, None)
+
+
 # --------------------------------------------------------------------------- #
 # Run loops
 # --------------------------------------------------------------------------- #
@@ -1007,6 +1165,7 @@ def run_browser(args, info, rules, stop):
     pending_resume = {}   # Fetch.enable command id -> session to resume once it's acked
     replaced = {}         # session -> url already re-navigated for a 'replace' rule (loop guard)
     pending = {}          # session -> redirect target; tab is "tainted" until it lands there
+    newtab_done = {}      # targetId -> url already sent for the new-tab redirect (loop guard)
     try:
         client.send("Target.setDiscoverTargets", {"discover": True})
         # flatten=true => events/commands carry a sessionId over this one socket.
@@ -1021,10 +1180,23 @@ def run_browser(args, info, rules, stop):
         next_kill = time.time() + 15
         next_sweep = time.time() + 3
         devtools_misses = 0
+        cur_homepage = resolve_homepage(rules, args)
+        cur_newtab = resolve_newtab(rules, args)
         while not stop["flag"]:
             now = time.time()
             if rules and now >= next_reload:
                 rules.maybe_reload()
+                # Live homepage/newtab changes (pulled blt.txt) apply immediately: the new-tab
+                # redirect uses cur_newtab on the next new tab, the Preferences write on the next
+                # launch, and the (best-effort, managed-only) NTP policy is refreshed too.
+                nhp = resolve_homepage(rules, args)
+                nnt = resolve_newtab(rules, args)
+                if nhp != cur_homepage or nnt != cur_newtab:
+                    log("homepage/newtab changed -> %s / %s"
+                        % (nhp or "(default)", nnt or "(default)"))
+                    apply_ntp_policy(nnt)
+                    write_chrome_prefs(args.user_data_dir, nhp)
+                    cur_homepage, cur_newtab = nhp, nnt
                 next_reload = now + 2
             if now >= next_check:
                 # Periodically RE-CHECK that Chrome is still in debug mode. Tolerate ONE transient
@@ -1046,6 +1218,7 @@ def run_browser(args, info, rules, stop):
             # Keep detecting ruled domains and redirect them, even if an event was missed.
             if rules and now >= next_sweep:
                 _sweep_redirect(client, args.port, rules, sessions, pending)
+                _sweep_newtab(client, args.port, cur_newtab, sessions, newtab_done)
                 next_sweep = now + 3
             try:
                 msg = client.recv()
@@ -1108,6 +1281,15 @@ def run_browser(args, info, rules, stop):
                     host = host_of(match_url)
                     log("NAV       %s" % match_url)
                     special = (not match_url) or match_url.startswith(("about:", "data:", "chrome:"))
+
+                    # New-tab redirect: send a fresh chrome://newtab (Ctrl+T) to the configured page.
+                    # This is the mechanism that works on UNMANAGED PCs — a plain Page.navigate inside
+                    # the regulated instance — where the NewTabPageLocation policy is ignored. After we
+                    # navigate, the tab's URL becomes the target (not a newtab URL), so it won't loop.
+                    if cur_newtab and _is_newtab_url(match_url):
+                        log("NEWTAB    %s -> %s" % (match_url, cur_newtab))
+                        client.send("Page.navigate", {"url": cur_newtab}, sid)
+                        continue
 
                     # Sticky redirect: once a tab has hit a gambling domain, we keep dragging it to the
                     # target until it actually LANDS there. So when the site rotates (jilibet.com ->
@@ -1191,6 +1373,14 @@ def main():
     parser.add_argument("--block-page", metavar="FILE",
                         help="Custom warning HTML for blocked sites ('{{DOMAIN}}' is "
                              "replaced with the blocked host). Default: built-in page.")
+    parser.add_argument("--homepage", default="", metavar="URL",
+                        help="Set the regulated Chrome's startup page + Home button (in its profile). "
+                             "A 'homepage <url>' line in blt.txt overrides this; baked _embed('HOMEPAGE') "
+                             "is the fallback.")
+    parser.add_argument("--newtab", default="", metavar="URL",
+                        help="Send each new tab (chrome://newtab) to this URL via a runtime redirect — "
+                             "works on UNMANAGED PCs (unlike the NewTabPageLocation policy). A 'newtab "
+                             "<url>' line in blt.txt overrides this; blank => same as --homepage.")
     parser.add_argument("--all-tabs", action="store_true",
                         help="Attach at the browser level and follow every tab/window "
                              "(automatic when --block is used)")
@@ -1279,14 +1469,21 @@ def main():
     return run_once(args, rules, regulate, stop)
 
 
-def _seize_chrome(args, first=True):
+def _seize_chrome(args, rules, first=True):
     """Make Chrome the debug-enabled instance. VERIFY the debug port first: if Chrome is
     already debugging there, attach (don't disturb it); otherwise relaunch Chrome with the
     port. Returns the launched Popen (or None if we attached). Raises RuntimeError on failure."""
+    homepage = resolve_homepage(rules, args)
+    newtab = resolve_newtab(rules, args)
+    # NTP policy is browser-wide (HKLM) but ONLY honored on managed/enrolled devices — on a plain
+    # consumer PC Chrome ignores it. It's a harmless best-effort bonus for managed fleets; the
+    # mechanism that actually works everywhere is the runtime new-tab redirect in run_browser.
+    apply_ntp_policy(newtab)
     already = is_devtools_up(args.port)
     if already and not (first and args.force_restart):
         log("Verified: Chrome is already debugging on port %d (%s) — attaching, not restarting."
             % (args.port, already.get("Browser", "?")))
+        # Attaching: can't change the startup tab now, but the new-tab redirect still runs.
         return None
     if args.no_launch:
         raise RuntimeError("--no-launch set but nothing is listening on port %d." % args.port)
@@ -1300,15 +1497,18 @@ def _seize_chrome(args, first=True):
             "with --remote-debugging-port=%d." % args.port)
     else:
         log("No Chrome running — launching with --remote-debugging-port=%d." % args.port)
+    if homepage:
+        log("homepage: %s (startup page + Home button; NTP via policy)" % homepage)
+    write_chrome_prefs(args.user_data_dir, homepage)   # persist startup/home-button before launch
     kill_chrome()
-    return launch_chrome(chrome_path, args.port, args.user_data_dir)
+    return launch_chrome(chrome_path, args.port, args.user_data_dir, homepage)
 
 
 def run_once(args, rules, regulate, stop):
     """Seize Chrome once, regulate until it closes, then exit (the original behavior)."""
     chrome_proc = None
     try:
-        chrome_proc = _seize_chrome(args, first=True)
+        chrome_proc = _seize_chrome(args, rules, first=True)
         info = wait_for_devtools(args.port)
         if regulate:
             run_browser(args, info, rules, stop)
@@ -1354,7 +1554,7 @@ def run_persistent(args, rules, regulate, stop):
             continue
         chrome_proc = None
         try:
-            chrome_proc = _seize_chrome(args, first=first)
+            chrome_proc = _seize_chrome(args, rules, first=first)
             first = False
             info = wait_for_devtools(args.port)
             if regulate:

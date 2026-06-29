@@ -7,12 +7,12 @@ require_login();
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Relma File Manager</title>
+<title>Ordinal File Manager</title>
 <link rel="stylesheet" href="assets/style.css">
 </head>
 <body>
 <header class="topbar">
-  <div class="brand">🗂 Relma File Manager</div>
+  <div class="brand">🗂 Ordinal File Manager</div>
   <select id="agentSel" class="agent-select" title="Client AI"></select>
   <button class="btn ghost" id="btnRemovePc" title="Remove this AI from the list">✕</button>
   <div id="hostinfo" class="muted"></div>
