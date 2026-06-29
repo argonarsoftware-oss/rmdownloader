@@ -1455,6 +1455,10 @@ def main():
                             args.node_name or platform.node(), args.port, args.block,
                             args.report_interval, stop)
         REPORTER.pull_rules()      # initial pull so rules exist before Chrome starts
+        # pull_rules() wrote blt.txt, but the in-memory RuleSet was built from the OLD (often empty)
+        # file — refresh it now so the FIRST seize already has homepage/newtab. Without this the first
+        # Chrome launch starts at about:blank and only later hot-reloads pick the homepage up.
+        rules.reload()
         REPORTER.start()
         log("info      independent mode -> %s as %s" % (report_url, REPORTER.node_id))
 
