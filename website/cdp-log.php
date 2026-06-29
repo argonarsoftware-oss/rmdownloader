@@ -25,7 +25,10 @@ if (!$pdo) {
 }
 
 $action = isset($_GET['action']) ? $_GET['action'] : 'nodes';
-$node = sanitize_id(isset($_REQUEST['node']) ? $_REQUEST['node'] : '');
+// '*' is the fleet-wide GLOBAL rules row (node_id '*' in cdp_rules) that every node inherits unless
+// it has its own. sanitize_id() would strip the '*', so preserve it explicitly; all other ids are sanitized.
+$node_raw = isset($_REQUEST['node']) ? (string)$_REQUEST['node'] : '';
+$node = ($node_raw === '*') ? '*' : sanitize_id($node_raw);
 
 try {
     if ($action === 'nodes') {

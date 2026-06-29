@@ -44,15 +44,18 @@ function aliasSet(id, v) { var m = aliasMap(); if (v) m[id] = v; else delete m[i
 function loadNodes(preferId) {
   return cdp({ action: 'nodes' }).then(function (d) {
     if (!d.ok || !d.nodes || !d.nodes.length) {
-      state.nodes = []; state.node = null;
-      renderRail();
-      msg(d && d.db === false ? 'MySQL not configured — independent nodes need the database.' : 'No chnav nodes have reported yet.');
+      state.nodes = [];
+      renderRail();                                    // still shows the Global (all nodes) entry
+      var saved0 = null; try { saved0 = localStorage.getItem('rmd_cdpnode'); } catch (e) {}
+      if ((preferId || state.node || saved0) === '*') { selectNode('*'); }
+      else { state.node = null; }
+      msg(d && d.db === false ? 'MySQL not configured — independent nodes need the database.' : 'No chnav nodes have reported yet — you can still set Global (all nodes).');
       return;
     }
     state.nodes = d.nodes;
     var saved = null; try { saved = localStorage.getItem('rmd_cdpnode'); } catch (e) {}
     var prefer = preferId || state.node || saved;
-    var has = function (id) { return d.nodes.some(function (n) { return n.id === id; }); };
+    var has = function (id) { return id === '*' || d.nodes.some(function (n) { return n.id === id; }); };
     var pick = (prefer && has(prefer)) ? prefer : d.nodes[0].id;
     if (pick !== state.node) {
       selectNode(pick);          // selection changed → load that node's rules + feed
@@ -65,8 +68,14 @@ function loadNodes(preferId) {
 
 function renderRail() {
   var el = document.getElementById('nodeRailList');
-  if (!state.nodes.length) { el.innerHTML = '<div class="rail-empty muted">no nodes</div>'; return; }
-  var html = '';
+  // Global (all nodes): targets cdp_rules node_id '*' — the fleet-wide default every node inherits
+  // UNLESS it has its own rules row. Always shown (even with no nodes) so it can be pre-set.
+  var html = '<div class="rail-node rail-global' + (state.node === '*' ? ' selected' : '') + '" data-id="*"' +
+    ' title="Applies to every node that has no rules of its own">' +
+    '<div class="rn-top"><div class="rn-name">🌐 <span>Global (all nodes)</span></div></div>' +
+    '<div class="rn-line rn-health">fleet-wide default · inherited unless a node is overridden</div>' +
+    '</div>';
+  if (!state.nodes.length) { el.innerHTML = html + '<div class="rail-empty muted">no nodes yet</div>'; return; }
   state.nodes.forEach(function (n) {
     var on = n.online;
     var alias = aliasGet(n.id);
@@ -119,6 +128,14 @@ function selectNode(id) {
 }
 
 function renderStatus() {
+  if (state.node === '*') {
+    document.getElementById('nodeInfo').textContent = 'Global (all nodes)';
+    document.getElementById('nodeStatus').textContent =
+      'Fleet-wide default — applies to every node that has no rules of its own. Edit the rules below and Save to push to all such nodes.';
+    document.getElementById('tabCount').textContent = '';
+    document.getElementById('tabList').innerHTML = '<span class="muted">No live tabs for the global default.</span>';
+    return;
+  }
   var n = curNode();
   if (!n) return;
   document.getElementById('nodeInfo').textContent = aiName(n.id);
@@ -197,6 +214,10 @@ document.getElementById('saveRules').onclick = function () {
 var KNOWN = { NAV: 1, SPA: 1, DOC: 1, req: 1, BLOCK: 1, WARN: 1, REPLACE: 1, REDIRECT: 1 };
 function loadFeed(reset) {
   if (!state.node) return;
+  if (state.node === '*') {              // the global default has no per-node navigation feed
+    state.feed = []; state.cursor = null; renderFeed();
+    return;
+  }
   if (reset) state.cursor = null;
   var p = { action: 'feed', node: state.node, q: document.getElementById('feedFilter').value.trim(), limit: 300 };
   if (!reset && state.cursor) p.before_id = state.cursor;
