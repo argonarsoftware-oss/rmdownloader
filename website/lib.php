@@ -198,8 +198,12 @@ function cdp_set_rules($pdo, $id, $rules) {
 
 function cdp_nodes($pdo) {
     // last_url = the node's most recent navigation event (newest by id); SELECT-only, no schema change.
+    // has_own_rules: does this node have its OWN cdp_rules row? If not, cdp_get_rules() falls back to
+    // the '*' global, so the UI can badge it as inheriting. (A node with its own row — even empty —
+    // does NOT inherit, matching cdp_get_rules.)
     $st = $pdo->query('SELECT n.node_id, n.name, n.last_seen, n.chrome, n.tabs, n.running,
                         (UNIX_TIMESTAMP() - UNIX_TIMESTAMP(n.last_seen)) AS age,
+                        EXISTS(SELECT 1 FROM cdp_rules r WHERE r.node_id = n.node_id) AS has_own_rules,
                         (SELECT e.url FROM cdp_events e WHERE e.node_id = n.node_id ORDER BY e.id DESC LIMIT 1) AS last_url
                        FROM cdp_nodes n ORDER BY n.last_seen DESC');
     return $st->fetchAll();

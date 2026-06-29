@@ -92,12 +92,17 @@ function renderRail() {
       : '(no tabs)';
     var health = 'Nome ' + nomeVer(n.chrome) + ' · chnav ' + (n.running ? 'on' : 'off') + ' · ' + (on ? 'online' : agoStr(n.age));
     var lastHost = hostOf(n.last_url);
+    // No own cdp_rules row => this node inherits the Global ('*') rules (cdp_get_rules fallback).
+    var inherits = !n.own_rules
+      ? '<div class="rn-line rn-inherit muted" title="No rules of its own — inherits Global (all nodes)">↳ uses Global</div>'
+      : '<div class="rn-line rn-inherit muted" title="Has its own rules — not inheriting Global">• own rules</div>';
 
     html += '<div class="rail-node' + (n.id === state.node ? ' selected' : '') + '" data-id="' + esc(n.id) + '" title="' + esc(aiName(n.id)) + '">' +
       '<div class="rn-top"><div class="rn-name">' + (on ? '🟢' : '⚪') + ' <span>' + esc(label) + '</span></div>' +
         '<button class="rn-edit" data-alias="' + esc(n.id) + '" title="Label this device (this browser only)">✎</button></div>' +
       (alias ? '<div class="rn-id">' + esc(aiName(n.name || n.id)) + '</div>' : '') +
       '<div class="rn-line rn-health">' + esc(health) + '</div>' +
+      inherits +
       '<div class="rn-line rn-tabs' + (n.gl ? ' gl' : '') + '">' + esc(tabsLine) + '</div>' +
       (lastHost ? '<div class="rn-line rn-last">→ ' + esc(lastHost) + '</div>' : '') +
       '</div>';

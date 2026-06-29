@@ -49,6 +49,7 @@ try {
                 'last_seen' => $r['last_seen'],
                 'last_url' => (string)(isset($r['last_url']) ? $r['last_url'] : ''),
                 'gl' => $gl,
+                'own_rules' => (int)(isset($r['has_own_rules']) ? $r['has_own_rules'] : 0),
                 'tabs' => $tabs,
             );
         }
