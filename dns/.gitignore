@@ -1,5 +1,6 @@
 # build output / runtime files — keep the source AND the committed exe
 build/
+*.spec
 __pycache__/
 *.pyc
 # Ship the compiled tool exe (see CLAUDE.md "Compiled tool exes ARE committed"):
