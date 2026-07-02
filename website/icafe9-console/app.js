@@ -1118,6 +1118,10 @@ function applyRole() {
       document.querySelectorAll('.page').forEach((p) => p.classList.toggle('active', p.id === 'page-dashboard'));
     }
   });
+  // Developer-only UI (e.g. Remote Access relay config) — hidden from admin/operators.
+  document.querySelectorAll('[data-dev]').forEach((el) => {
+    el.style.display = role === 'developer' ? '' : 'none';
+  });
 }
 
 /* ---------- render root ---------- */
