@@ -150,6 +150,7 @@ function renderPcGrid() {
            <button data-act="msg" data-pc="${pc.id}" title="Send a message to this screen">💬 Msg</button>
            <button data-act="restart" data-pc="${pc.id}" title="Restart this PC">↻ Restart</button>
            <button class="danger" data-act="shutdown" data-pc="${pc.id}" title="Shut this PC down">⏻ Off</button>
+           <button data-act="rmtask" data-pc="${pc.id}" title="Remove the agent's auto-start (Task Scheduler) on this PC">🗑 Auto-start</button>
          </div>`
       : pc.mac
         ? `<div class="pc-remote"><button data-act="wake" data-pc="${pc.id}" title="Wake-on-LAN">⏻ Wake Up</button></div>`
@@ -194,6 +195,11 @@ $('#pcGrid').addEventListener('click', (e) => {
     const pc = state.pcs.find((p) => p.id === pcId);
     confirmModal(`${act === 'restart' ? 'Restart' : 'Shut down'} "${pc.name}"?${pc.session ? ' It has an ACTIVE session!' : ''}`,
       () => apiCall('pcCommand', { pcId, action: act }).then(() => toast(`${act} command sent`)));
+  }
+  if (act === 'rmtask') {
+    const pc = state.pcs.find((p) => p.id === pcId);
+    confirmModal(`Remove the Icafe9 Agent auto-start task on "${pc.name}"? It will no longer relaunch on boot until the agent is reinstalled.`,
+      () => apiCall('pcCommand', { pcId, action: 'removeStartup' }).then(() => toast('Auto-start removal sent')));
   }
 });
 

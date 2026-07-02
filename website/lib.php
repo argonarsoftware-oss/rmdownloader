@@ -32,6 +32,7 @@ function require_login() {
 // Authorize an API request: a logged-in browser session OR a valid API key
 // (?key=<API_KEY> or header X-Api-Key). Lets automation/Claude Code drive api.php.
 function api_authorized() {
+    app_session(); // start the session so a logged-in browser cookie is honored (not just API key)
     if (is_logged_in()) return true;
     if (defined('API_KEY') && API_KEY !== '') {
         $k = '';
