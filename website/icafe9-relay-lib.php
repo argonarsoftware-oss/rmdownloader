@@ -12,6 +12,7 @@
 //   <nodeId>/cmd/<cmdId>.json           queued developer command {id,method,payload}
 //   <nodeId>/res/<cmdId>.json           result {ok,data|error}
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/lib.php'; // for db() — the cloud mirror; lib.php has no load-time side effects
 
 function ic9_root() { return DATA_DIR . '/icafe9'; }
 
