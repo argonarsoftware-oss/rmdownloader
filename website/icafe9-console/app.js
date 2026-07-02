@@ -1140,6 +1140,17 @@ function showGate() {
   const gate = $('#gate');
   gate.classList.remove('hidden');
   $('#gateTitle').textContent = state.settings?.cafeName || 'Icafe9 Server';
+  // First run: no administrator exists yet → create-admin step.
+  const needsSetup = auth.needsSetup && !auth.operator;
+  $('#gateSetup').classList.toggle('hidden', !needsSetup);
+  if (needsSetup) {
+    $('#gateLogin').classList.add('hidden');
+    $('#gateShift').classList.add('hidden');
+    $('#gateSub').textContent = 'Welcome — set up your administrator account';
+    $('#gateSetupMsg').textContent = '';
+    $('#setupName').focus();
+    return;
+  }
   if (!auth.operator) {
     $('#gateLogin').classList.remove('hidden');
     $('#gateShift').classList.add('hidden');
@@ -1178,6 +1189,19 @@ $('#gateLoginBtn').addEventListener('click', async () => {
   } catch (err) { $('#gateMsg').textContent = err.message; }
 });
 $('#gatePass').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#gateLoginBtn').click(); });
+
+$('#gateSetupBtn').addEventListener('click', async () => {
+  const pass = $('#setupPass').value;
+  if (pass.length < 4) { $('#gateSetupMsg').textContent = 'Password must be at least 4 characters'; return; }
+  if (pass !== $('#setupPass2').value) { $('#gateSetupMsg').textContent = 'Passwords do not match'; return; }
+  try {
+    await apiCall('setupAdmin', { name: $('#setupName').value.trim(), username: $('#setupUser').value.trim(), password: pass });
+    await refresh();
+    showGate();   // now signed in as the new admin → advances to the shift step
+    updateGate();
+  } catch (err) { $('#gateSetupMsg').textContent = err.message; }
+});
+$('#setupPass2').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#gateSetupBtn').click(); });
 
 $('#gateOpenShiftBtn').addEventListener('click', async () => {
   try {

@@ -97,7 +97,7 @@
       <section class="page" id="page-settings">
         <div class="page-head"><h1>Settings</h1></div>
         <div class="settings-cols">
-          <div class="card">
+          <div class="card" style="display:none">
             <h2>General</h2>
             <form id="settingsForm" class="form">
               <label>Cafe name <input name="cafeName" /></label>
@@ -187,7 +187,16 @@
         <input id="gatePass" type="password" placeholder="Password" />
         <button class="btn primary" id="gateLoginBtn">Sign In</button>
         <div class="gate-msg" id="gateMsg"></div>
-        <div class="gate-hint">Default account: <b>admin</b> / <b>admin</b></div>
+      </div>
+
+      <div id="gateSetup" class="gate-form hidden">
+        <input id="setupName" placeholder="Full name (e.g. Owner)" autocomplete="off" />
+        <input id="setupUser" placeholder="Administrator username" autocomplete="off" />
+        <input id="setupPass" type="password" placeholder="Password (min 4 chars)" />
+        <input id="setupPass2" type="password" placeholder="Confirm password" />
+        <button class="btn primary" id="gateSetupBtn">Create Administrator</button>
+        <div class="gate-msg" id="gateSetupMsg"></div>
+        <div class="gate-hint">First run — create the administrator account for this cafe.</div>
       </div>
 
       <div id="gateShift" class="gate-form hidden">

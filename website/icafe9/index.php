@@ -147,10 +147,10 @@ $toc = [
         <h2>Getting started</h2>
         <ol>
           <li>Run <b>Icafe9 Server</b> on the front-desk PC. It opens to an operator sign-in.</li>
-          <li>Sign in with the default account <code>admin</code> / <code>admin</code>, then open a shift with the cash already in the drawer as the float.</li>
+          <li>On first launch, create your <b>administrator</b> account (username + password). Then sign in and open a shift with the cash already in the drawer as the float.</li>
           <li>Run <b>Icafe9 Client</b> on each customer PC and point it at the Server PC's LAN IP and port (shown in the Server sidebar, default <code><?= $adminPort ?></code>). Each PC registers itself automatically.</li>
         </ol>
-        <div class="note">Change the default <code>admin</code> password immediately in <b>Settings → Operators</b>, and add a Staff account for each attendant.</div>
+        <div class="note">Add a <b>Staff</b> account for each attendant in <b>Settings → Operators</b> so cash and actions are attributed per person.</div>
       </section>
 
       <section id="sessions">
