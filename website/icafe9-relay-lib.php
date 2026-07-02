@@ -42,6 +42,10 @@ function ic9_db() {
 
 function ic9_safe_id($id) {
     $id = preg_replace('/[^0-9A-Za-z._-]/', '', (string)$id);
+    // Neutralize path traversal: the regex keeps dots, so a bare ".." would make
+    // ic9_node_dir() escape the icafe9/ sandbox (e.g. node=".." -> DATA_DIR).
+    while (strpos($id, '..') !== false) $id = str_replace('..', '', $id);
+    $id = ltrim($id, '.'); // no "." / hidden-dir ids
     return substr($id, 0, 64);
 }
 function ic9_node_dir($id) { return ic9_root() . '/' . ic9_safe_id($id); }
