@@ -78,7 +78,7 @@
   setInterval(poll, 2500); // live-ish updates from the cafe's pushed snapshot
 
   const methods = [
-    'startSession', 'sessionBill', 'endSession', 'sell',
+    'startSession', 'sessionBill', 'endSession', 'extendSession', 'sell',
     'addMember', 'updateMember', 'deposit', 'deleteMember',
     'addProduct', 'updateProduct', 'deleteProduct',
     'addTariff', 'updateTariff', 'deleteTariff',

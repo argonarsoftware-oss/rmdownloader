@@ -142,6 +142,7 @@ function renderPcGrid() {
     const badge = pc.session ? 'IN USE' : pc.online ? 'AVAILABLE' : 'OFFLINE';
     const actions = pc.session
       ? `<button class="btn" data-act="sell" data-pc="${pc.id}">Sell</button>
+         ${pc.session.type === 'timed' ? `<button class="btn" data-act="extend" data-session="${pc.session.id}">＋ Time</button>` : ''}
          <button class="btn danger" data-act="end" data-session="${pc.session.id}">Stop</button>`
       : `<button class="btn primary" data-act="start" data-pc="${pc.id}">Start</button>
          <button class="btn" data-act="sell" data-pc="${pc.id}">Sell</button>`;
@@ -188,6 +189,7 @@ $('#pcGrid').addEventListener('click', (e) => {
   const pcId = Number(btn.dataset.pc);
   if (act === 'start') openStartSession(pcId);
   if (act === 'end') openEndSession(Number(btn.dataset.session));
+  if (act === 'extend') openExtendSession(Number(btn.dataset.session));
   if (act === 'sell') openSale(pcId);
   if (act === 'msg') openMessageModal(pcId);
   if (act === 'wake') apiCall('wakePc', { pcId }).then((mac) => toast(`Wake packet sent to ${mac}`)).catch(() => {});
@@ -368,6 +370,80 @@ async function openEndSession(sessionId) {
       await apiCall('endSession', { sessionId, payMethod: box.querySelector('#esPay')?.value });
       closeModal();
       toast('Session ended');
+    } catch (err) { modalError(err.message); }
+  });
+}
+
+/* ---------- extend (add time) modal ---------- */
+function openExtendSession(sessionId) {
+  const pc = state.pcs.find((p) => p.session && p.session.id === sessionId);
+  const s = pc ? pc.session : null;
+  if (!s) return;
+  const member = s.memberId ? state.members.find((m) => m.id === s.memberId) : null;
+  const activePackages = (state.packages || []).filter((p) => p.active);
+  const packageOptions = activePackages.map((p) =>
+    `<option value="${p.id}">${esc(p.name)} — ${fmtMins(p.minutes)} for ${money(p.price)}</option>`).join('');
+
+  const box = openModal(`
+    <h2>Extend Time — ${esc(pc.name)}</h2>
+    <div class="form">
+      <label>Add by
+        <div class="seg" id="segExt">
+          <button type="button" data-v="minutes" class="active">Minutes</button>
+          <button type="button" data-v="package" ${activePackages.length ? '' : 'disabled'}>Package</button>
+        </div>
+      </label>
+      <div class="form-row" id="extMinRow">
+        <label>Minutes <input id="exMinutes" type="number" value="30" min="1" /></label>
+      </div>
+      <div id="extPkgRow" style="display:none">
+        <label>Package <select id="exPackage">${packageOptions}</select></label>
+      </div>
+      <label>Pay with
+        <select id="exPay"><option value="cash">Cash</option>${member ? `<option value="balance" selected>Member balance (${esc(member.username)}: ${money(member.balance)})</option>` : ''}</select>
+      </label>
+      <div class="hint" id="exHint"></div>
+    </div>
+    <div class="error"></div>
+    <div class="modal-actions">
+      <button class="btn" id="exCancel">Cancel</button>
+      <button class="btn primary" id="exGo">Add Time</button>
+    </div>`);
+
+  let mode = 'minutes';
+  const updateHint = () => {
+    const hint = box.querySelector('#exHint');
+    if (mode === 'package') {
+      const pkg = activePackages.find((p) => p.id === Number(box.querySelector('#exPackage').value));
+      hint.textContent = pkg ? `Adds ${fmtMins(pkg.minutes)} for ${money(pkg.price)}` : '';
+    } else {
+      const mins = Number(box.querySelector('#exMinutes').value) || 0;
+      hint.textContent = `Adds ${fmtMins(mins)} for ${money(mins * (s.ratePerHour || 0) / 60)} at ${money(s.ratePerHour || 0)}/hour`;
+    }
+  };
+  box.querySelector('#segExt').addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b || b.disabled) return;
+    mode = b.dataset.v;
+    box.querySelectorAll('#segExt button').forEach((x) => x.classList.toggle('active', x === b));
+    box.querySelector('#extMinRow').style.display = mode === 'minutes' ? 'flex' : 'none';
+    box.querySelector('#extPkgRow').style.display = mode === 'package' ? 'block' : 'none';
+    updateHint();
+  });
+  box.querySelector('#exMinutes').addEventListener('input', updateHint);
+  box.querySelector('#exPackage').addEventListener('change', updateHint);
+  updateHint();
+
+  box.querySelector('#exCancel').addEventListener('click', closeModal);
+  box.querySelector('#exGo').addEventListener('click', async () => {
+    try {
+      await apiCall('extendSession', {
+        sessionId,
+        minutes: mode === 'minutes' ? Number(box.querySelector('#exMinutes').value) : null,
+        packageId: mode === 'package' ? Number(box.querySelector('#exPackage').value) : null,
+        payMethod: box.querySelector('#exPay').value
+      });
+      closeModal();
+      toast('Time added');
     } catch (err) { modalError(err.message); }
   });
 }
