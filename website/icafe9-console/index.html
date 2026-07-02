@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'" />
+  <title>Icafe9 Admin</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-logo">i9</div>
+        <div>
+          <div class="brand-name" id="brandName">Icafe9</div>
+          <div class="brand-sub">Admin Console</div>
+        </div>
+      </div>
+      <nav class="nav">
+        <button class="nav-item active" data-page="dashboard"><span class="nav-ico">▦</span> Dashboard</button>
+        <button class="nav-item" data-page="members"><span class="nav-ico">☺</span> Members</button>
+        <button class="nav-item" data-page="products"><span class="nav-ico">▤</span> Products</button>
+        <button class="nav-item" data-page="reports"><span class="nav-ico">◫</span> Reports</button>
+        <button class="nav-item" data-page="audit" data-admin="1"><span class="nav-ico">≣</span> Audit Log</button>
+        <button class="nav-item" data-page="settings" data-admin="1"><span class="nav-ico">⚙</span> Settings</button>
+        <button class="nav-item" data-page="guide"><span class="nav-ico">?</span> Manual / Guide</button>
+      </nav>
+      <div class="shift-box" id="shiftBox"></div>
+      <div class="server-info" id="serverInfo"></div>
+    </aside>
+
+    <main class="main">
+      <section class="page active" id="page-dashboard">
+        <div class="page-head">
+          <h1>Dashboard</h1>
+          <div class="head-actions">
+            <button class="btn" id="btnMessageAll">📢 Message All</button>
+            <button class="btn" id="btnQuickSale">Quick Sale</button>
+            <button class="btn primary" id="btnAddPcDash">+ Add PC</button>
+          </div>
+        </div>
+        <div class="stats" id="statsRow"></div>
+        <div class="pc-grid" id="pcGrid"></div>
+      </section>
+
+      <section class="page" id="page-members">
+        <div class="page-head">
+          <h1>Members</h1>
+          <div class="head-actions">
+            <input type="search" id="memberSearch" placeholder="Search members…" />
+            <button class="btn primary" id="btnAddMember">+ New Member</button>
+          </div>
+        </div>
+        <div class="card">
+          <table class="table" id="membersTable"></table>
+        </div>
+      </section>
+
+      <section class="page" id="page-products">
+        <div class="page-head">
+          <h1>Products</h1>
+          <div class="head-actions">
+            <button class="btn" id="btnQuickSale2">Quick Sale</button>
+            <button class="btn primary" id="btnAddProduct">+ New Product</button>
+          </div>
+        </div>
+        <div class="card">
+          <table class="table" id="productsTable"></table>
+        </div>
+      </section>
+
+      <section class="page" id="page-reports">
+        <div class="page-head">
+          <h1>Reports</h1>
+          <div class="head-actions">
+            <select id="reportRange">
+              <option value="today">Today</option>
+              <option value="yesterday">Yesterday</option>
+              <option value="week">Last 7 days</option>
+              <option value="month">Last 30 days</option>
+            </select>
+          </div>
+        </div>
+        <div class="stats" id="reportStats"></div>
+        <div class="report-cols">
+          <div class="card">
+            <h2>Sessions</h2>
+            <table class="table" id="reportSessions"></table>
+          </div>
+          <div class="card">
+            <h2>Product Sales</h2>
+            <table class="table" id="reportOrders"></table>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" id="page-settings">
+        <div class="page-head"><h1>Settings</h1></div>
+        <div class="settings-cols">
+          <div class="card">
+            <h2>General</h2>
+            <form id="settingsForm" class="form">
+              <label>Cafe name <input name="cafeName" /></label>
+              <label>Currency symbol <input name="currency" maxlength="3" /></label>
+              <label>Server port <input name="port" type="number" min="1024" max="65535" /></label>
+              <label>Client exit password <input name="exitPassword" /></label>
+              <button class="btn primary" type="submit">Save Settings</button>
+              <div class="hint" id="settingsHint"></div>
+            </form>
+          </div>
+          <div class="card">
+            <div class="card-head">
+              <h2>Tariffs</h2>
+              <button class="btn small" id="btnAddTariff">+ Add</button>
+            </div>
+            <table class="table" id="tariffsTable"></table>
+          </div>
+          <div class="card">
+            <div class="card-head">
+              <h2>Time Packages</h2>
+              <button class="btn small" id="btnAddPackage">+ Add</button>
+            </div>
+            <table class="table" id="packagesTable"></table>
+          </div>
+          <div class="card">
+            <div class="card-head">
+              <h2>PCs</h2>
+              <button class="btn small" id="btnAddPc">+ Add</button>
+            </div>
+            <table class="table" id="pcsTable"></table>
+          </div>
+          <div class="card">
+            <div class="card-head">
+              <h2>Operators</h2>
+              <button class="btn small" id="btnAddOperator">+ Add</button>
+            </div>
+            <table class="table" id="operatorsTable"></table>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" id="page-audit">
+        <div class="page-head">
+          <h1>Audit Log</h1>
+          <div class="head-actions">
+            <input type="search" id="auditSearch" placeholder="Filter by operator or action…" />
+            <button class="btn" id="auditRefresh">Refresh</button>
+          </div>
+        </div>
+        <div class="card">
+          <table class="table" id="auditTable"></table>
+        </div>
+      </section>
+
+      <section class="page" id="page-guide">
+        <div class="page-head"><h1>Manual / Guide</h1></div>
+        <div class="card guide-card" id="guideContent"></div>
+      </section>
+    </main>
+  </div>
+
+  <div class="modal-backdrop hidden" id="modalBackdrop">
+    <div class="modal" id="modalBox"></div>
+  </div>
+  <div class="toast hidden" id="toast"></div>
+
+  <!-- Login / shift gate: covers the whole app until an operator signs in and opens a shift -->
+  <div class="gate hidden" id="gate">
+    <div class="gate-panel">
+      <div class="gate-logo">i9</div>
+      <div class="gate-title" id="gateTitle">Icafe9 Admin</div>
+      <div class="gate-sub" id="gateSub">Operator sign-in</div>
+
+      <div id="gateLogin" class="gate-form">
+        <input id="gateUser" placeholder="Operator username" autocomplete="off" />
+        <input id="gatePass" type="password" placeholder="Password" />
+        <button class="btn primary" id="gateLoginBtn">Sign In</button>
+        <div class="gate-msg" id="gateMsg"></div>
+        <div class="gate-hint">Default account: <b>admin</b> / <b>admin</b></div>
+      </div>
+
+      <div id="gateShift" class="gate-form hidden">
+        <div class="gate-welcome" id="gateWelcome"></div>
+        <label class="gate-label">Opening cash float in the drawer
+          <input id="gateFloat" type="number" step="1" min="0" value="0" />
+        </label>
+        <button class="btn primary" id="gateOpenShiftBtn">Open Shift &amp; Start</button>
+        <button class="btn" id="gateSignOutBtn">Sign out</button>
+        <div class="gate-msg" id="gateShiftMsg"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
