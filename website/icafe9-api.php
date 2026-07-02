@@ -25,6 +25,12 @@ if ($action === 'nodes') {
 $node = isset($_GET['node']) ? $_GET['node'] : '';
 if ($node === '') { echo json_encode(array('ok' => false, 'error' => 'missing node')); exit; }
 
+// Diagnostic: is the durable MySQL mirror receiving this cafe's snapshots?
+if ($action === 'mirror') {
+    echo json_encode(array('ok' => true, 'data' => ic9_mirror_status($node)));
+    exit;
+}
+
 if ($action === 'state') {
     $state = ic9_load_state($node);
     if ($state === null) { echo json_encode(array('ok' => false, 'error' => 'no state yet')); exit; }

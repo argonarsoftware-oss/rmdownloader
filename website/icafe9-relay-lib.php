@@ -15,6 +15,30 @@ require_once __DIR__ . '/config.php';
 
 function ic9_root() { return DATA_DIR . '/icafe9'; }
 
+// ---- durable cloud mirror (MySQL) ----
+// The cafe's .exe stays local-authoritative; here we mirror each pushed snapshot
+// into MySQL so the web console shows real, durable data even if DATA_DIR is lost
+// or the VPS restarts. Best-effort and fully optional: every function degrades to
+// the file store when no database is configured (db() returns null).
+function ic9_db() {
+    static $ready = null;
+    if (!function_exists('db')) return null;
+    $pdo = db();
+    if (!$pdo) return null;
+    if ($ready === null) {
+        try {
+            $pdo->exec("CREATE TABLE IF NOT EXISTS icafe9_state ("
+                . "node_id VARCHAR(64) NOT NULL PRIMARY KEY,"
+                . "name VARCHAR(190) NOT NULL DEFAULT '',"
+                . "state_json LONGTEXT NOT NULL,"
+                . "updated_at BIGINT NOT NULL"
+                . ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+            $ready = true;
+        } catch (Exception $e) { $ready = false; }
+    }
+    return $ready ? $pdo : null;
+}
+
 function ic9_safe_id($id) {
     $id = preg_replace('/[^0-9A-Za-z._-]/', '', (string)$id);
     return substr($id, 0, 64);
@@ -72,19 +96,61 @@ function ic9_online($id) {
 }
 
 function ic9_save_state($id, $state) {
-    ic9_write_atomic(ic9_node_dir($id) . '/state.json', json_encode($state));
+    $json = json_encode($state);
+    ic9_write_atomic(ic9_node_dir($id) . '/state.json', $json);
     ic9_touch($id);
+    // Durable cloud mirror (best-effort).
+    $pdo = ic9_db();
+    if ($pdo) {
+        try {
+            $sid = ic9_safe_id($id);
+            $reg = ic9_registry();
+            $name = isset($reg[$sid]['name']) ? $reg[$sid]['name'] : $sid;
+            $stmt = $pdo->prepare("INSERT INTO icafe9_state (node_id,name,state_json,updated_at) VALUES (?,?,?,?)"
+                . " ON DUPLICATE KEY UPDATE name=VALUES(name), state_json=VALUES(state_json), updated_at=VALUES(updated_at)");
+            $stmt->execute(array($sid, $name, $json, time()));
+        } catch (Exception $e) { /* mirror is best-effort */ }
+    }
 }
 function ic9_load_state($id) {
     $f = ic9_node_dir($id) . '/state.json';
-    if (!is_file($f)) return null;
-    return json_decode(@file_get_contents($f), true);
+    if (is_file($f)) {
+        $j = json_decode(@file_get_contents($f), true);
+        if ($j !== null) return $j;
+    }
+    // Durable fallback: the last snapshot mirrored to MySQL (survives DATA_DIR loss).
+    $pdo = ic9_db();
+    if ($pdo) {
+        try {
+            $stmt = $pdo->prepare("SELECT state_json FROM icafe9_state WHERE node_id=?");
+            $stmt->execute(array(ic9_safe_id($id)));
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            if ($row && isset($row['state_json'])) return json_decode($row['state_json'], true);
+        } catch (Exception $e) { /* ignore */ }
+    }
+    return null;
+}
+// Latest mirror row for a node: { present, updated_at } — used by the ?action=mirror diagnostic.
+function ic9_mirror_status($id) {
+    $pdo = ic9_db();
+    if (!$pdo) return array('db' => false);
+    try {
+        $stmt = $pdo->prepare("SELECT name, updated_at, CHAR_LENGTH(state_json) AS bytes FROM icafe9_state WHERE node_id=?");
+        $stmt->execute(array(ic9_safe_id($id)));
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$row) return array('db' => true, 'present' => false);
+        return array('db' => true, 'present' => true, 'name' => $row['name'],
+            'updated_at' => (int)$row['updated_at'], 'bytes' => (int)$row['bytes'],
+            'age_seconds' => time() - (int)$row['updated_at']);
+    } catch (Exception $e) { return array('db' => true, 'error' => $e->getMessage()); }
 }
 
 function ic9_nodes() {
     $reg = ic9_registry();
     $out = array();
+    $seen = array();
     foreach ($reg as $id => $meta) {
+        $seen[$id] = true;
         $out[] = array(
             'id'     => $id,
             'name'   => isset($meta['name']) ? $meta['name'] : $id,
@@ -92,6 +158,23 @@ function ic9_nodes() {
             'online' => ic9_online($id),
             'seen'   => isset($meta['seen']) ? $meta['seen'] : 0
         );
+    }
+    // Include cafes known only from the durable mirror (e.g. after DATA_DIR loss),
+    // so the web console still lists them (offline) and can read their last state.
+    $pdo = ic9_db();
+    if ($pdo) {
+        try {
+            foreach ($pdo->query("SELECT node_id, name, updated_at FROM icafe9_state") as $r) {
+                if (isset($seen[$r['node_id']])) continue;
+                $out[] = array(
+                    'id'     => $r['node_id'],
+                    'name'   => $r['name'] !== '' ? $r['name'] : $r['node_id'],
+                    'ver'    => '',
+                    'online' => ic9_online($r['node_id']),
+                    'seen'   => (int)$r['updated_at']
+                );
+            }
+        } catch (Exception $e) { /* ignore */ }
     }
     return $out;
 }
