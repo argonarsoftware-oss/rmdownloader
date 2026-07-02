@@ -356,6 +356,30 @@ browser. Three parts:
     betting brands) and the response includes a `gambling` summary (`count`/`visits`/`sites`); the UI shows a
     warning **alert banner** + per-row badge. Same grouping + flag in `dns-text.php`.
 
+## Icafe9 subsystem (remote developer console) — `website/icafe9*.php` + `icafe9-console/`
+A separate product reusing the SAME reverse-connect idea: **Icafe9** is an internet-cafe
+manager (its own repo/desktop app). Its front-desk `.exe` keeps running for the operator;
+the owner (developer) drives that cafe's LIVE engine remotely from this VPS. The `.exe`
+dials OUT here (behind NAT, no inbound port) exactly like the agent, and a login-gated web
+console relays developer commands in. INDEPENDENT of the shell-agent queue — its own files,
+its own queue under `data/icafe9/`, so it can't interfere.
+- **`website/icafe9-relay-lib.php`** — self-contained file-queue + registry. Under
+  `DATA_DIR/icafe9/`: `nodes.json` (registry), `<nodeId>/state.json` (latest engine snapshot the
+  cafe pushed), `<nodeId>/online` (ts), `<nodeId>/cmd|res/*.json` (queue). Temp+rename writes.
+- **`website/icafe9-node.php`** — node-facing (the cafe's `.exe` bridge). Auth = shared `ENROLL_KEY`
+  via `X-Node-Token` (same secret as the agents; no session). Actions: `register`, `state` (push a
+  snapshot), `poll` (long-poll ~25s for one queued developer command), `result`.
+- **`website/icafe9-api.php`** — developer-facing. Auth = site login OR `API_KEY` (like `api.php`).
+  `nodes` (list cafes + online), `state&node=` (fast read of the pushed snapshot), `call&node=`
+  (enqueue `{method,payload}` → wait ~12s for the cafe's result).
+- **`website/icafe9.php`** — login-gated console page. Picks a connected cafe (floating picker),
+  serves the Icafe9 admin renderer from `icafe9-console/` with a relay shim (`relay-api.js`) that
+  recreates `window.api` over `icafe9-api.php`. `icafe9-console/` assets are copied from the Icafe9 repo.
+- **`website/icafe9/index.php`** — public product landing + manual + download page (no auth).
+- **Trust model:** relayed commands run on the cafe engine AS its `developer` account (full access,
+  audit-exempt). The cafe never puts its relay enroll key in the pushed snapshot. Same
+  single-threaded-`php -S` caveat — Apache serves the long-poll + dev calls concurrently.
+
 ## Queue protocol
 Browser/API → `enqueue_command` writes `data/<id>/cmd/<cmdId>.json` → agent long-poll claims it →
 agent runs it → posts result → `store_result` writes `data/<id>/res/<cmdId>.json` → `fetch_result`
