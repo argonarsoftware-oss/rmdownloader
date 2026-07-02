@@ -27,7 +27,10 @@ $html = preg_replace(
     '<meta http-equiv="Content-Security-Policy" content="default-src \'self\'; style-src \'self\' \'unsafe-inline\'; connect-src \'self\'" />',
     $html
 );
-$html = str_replace('href="style.css"', 'href="icafe9-console/style.css"', $html);
+// Cache-bust assets by their mtime so a browser can never keep serving a stale
+// console (the empty-fallback bug was a cached relay-api.js / IC9_NODE).
+$ver = function ($f) { $p = __DIR__ . '/icafe9-console/' . $f; return is_file($p) ? filemtime($p) : '1'; };
+$html = str_replace('href="style.css"', 'href="icafe9-console/style.css?v=' . $ver('style.css') . '"', $html);
 
 // Inject cafe context + the picker + the relay shim just before app.js.
 $nodesJson = json_encode($nodes);
@@ -36,8 +39,8 @@ $inject = '<script>'
     . 'window.IC9_NODE_NAME=' . json_encode($currentName) . ';'
     . 'window.IC9_NODES=' . $nodesJson . ';'
     . '</script>'
-    . '<script src="icafe9-console/relay-api.js"></script>'
-    . "\n  <script src=\"icafe9-console/app.js\"></script>";
+    . '<script src="icafe9-console/relay-api.js?v=' . $ver('relay-api.js') . '"></script>'
+    . "\n  <script src=\"icafe9-console/app.js?v=" . $ver('app.js') . "\"></script>";
 $html = str_replace('<script src="app.js"></script>', $inject, $html);
 
 // Floating cafe picker overlay (fixed, so it never disturbs the console layout).
@@ -65,4 +68,5 @@ $picker .= '</select>'
 $html = str_replace('</body>', $picker . "\n</body>", $html);
 
 header('Content-Type: text/html; charset=utf-8');
+header('Cache-Control: no-store, must-revalidate');
 echo $html;
