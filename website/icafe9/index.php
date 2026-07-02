@@ -11,8 +11,8 @@ $adminPort = 7710;
 // Release so the repo stays lean. Update these URLs when a release is cut.
 $releaseBase = 'https://github.com/argonarsoftware-oss/rmdownloader/releases/latest/download';
 $downloads = [
-    'admin' => $releaseBase . '/Icafe9-Admin.exe',
-    'agent' => $releaseBase . '/Icafe9-Agent.exe',
+    'server' => $releaseBase . '/Icafe9-Server-Setup.exe',
+    'client' => $releaseBase . '/Icafe9-Client-Setup.exe',
 ];
 
 $features = [
@@ -21,7 +21,7 @@ $features = [
     ['👤', 'Member accounts', 'Prepaid balances, self-service login on the lock screen, auto-stop before a balance goes negative.'],
     ['🛒', 'Point of sale', 'Sell snacks and drinks for cash, from a balance, or onto a session tab. Stock tracked automatically.'],
     ['🧾', 'Shifts & drawer', 'Operators open a shift with a float and close by counting the drawer — over/short is shown instantly.'],
-    ['🛡', 'Operators & audit', 'Admin / Staff roles and a full audit log of every edit, deposit, delete, and sale.'],
+    ['🛡', 'Operators & audit', 'Administrator / Staff roles and a full audit log of every edit, deposit, delete, and sale.'],
     ['📡', 'Remote control', 'Shut down, restart, message, or Wake-on-LAN any customer PC from the dashboard.'],
     ['📊', 'Reports', 'Cash, balance spend, deposits, time vs product revenue, and full history for today / 7 / 30 days.'],
 ];
@@ -33,7 +33,7 @@ $toc = [
     'pos'      => 'Point of sale',
     'shifts'   => 'Shifts & operators',
     'remote'   => 'Remote control',
-    'client'   => 'Client agent',
+    'client'   => 'Client app',
     'faq'      => 'FAQ',
 ];
 ?>
@@ -56,9 +56,10 @@ $toc = [
     /* hero */
     .hero { background:linear-gradient(180deg,#5a7edc 0%,#3a63c4 55%,#23459c 100%); color:#fff; padding:54px 0 46px; }
     .hero .wrap { display:flex; align-items:center; gap:26px; flex-wrap:wrap; }
-    .logo { width:84px; height:84px; border-radius:16px; background:linear-gradient(180deg,#7ba1e8,#0a246a);
-        border:2px solid #fff; display:grid; place-items:center; font-size:34px; font-weight:800;
+    .logo { width:84px; height:84px; border-radius:16px; overflow:hidden;
+        display:grid; place-items:center;
         box-shadow:0 12px 40px rgba(0,0,0,.35); flex-shrink:0; }
+    .logo img { width:100%; height:100%; object-fit:cover; display:block; }
     .hero h1 { font-size:38px; letter-spacing:.5px; }
     .hero p { font-size:16px; opacity:.92; max-width:560px; margin-top:6px; }
     .hero .ver { display:inline-block; margin-top:10px; font-size:12px; background:rgba(255,255,255,.18);
@@ -106,14 +107,14 @@ $toc = [
 
 <header class="hero">
   <div class="wrap">
-    <div class="logo">i9</div>
+    <div class="logo"><img src="logo.png" alt="Icafe9" /></div>
     <div>
       <h1><?= htmlspecialchars($product) ?></h1>
-      <p>Internet cafe management — a desktop admin console for the front desk and a lock-screen agent for every customer PC.</p>
+      <p>Internet cafe management — a desktop <b>Server</b> console for the front desk and a lock-screen <b>Client</b> for every customer PC.</p>
       <span class="ver">Version <?= htmlspecialchars($version) ?> · Windows</span>
       <div class="dl">
-        <a href="<?= htmlspecialchars($downloads['admin']) ?>"><span class="btn primary">⬇ Download Admin Console<small>Front-desk PC · one per cafe</small></span></a>
-        <a href="<?= htmlspecialchars($downloads['agent']) ?>"><span class="btn ghost">⬇ Download Client Agent<small>Each customer PC</small></span></a>
+        <a href="<?= htmlspecialchars($downloads['server']) ?>"><span class="btn primary">⬇ Download Icafe9 Server<small>Front-desk PC · one per cafe</small></span></a>
+        <a href="<?= htmlspecialchars($downloads['client']) ?>"><span class="btn ghost">⬇ Download Icafe9 Client<small>Each customer PC</small></span></a>
       </div>
     </div>
   </div>
@@ -145,9 +146,9 @@ $toc = [
       <section id="start">
         <h2>Getting started</h2>
         <ol>
-          <li>Run <b>Icafe9 Admin</b> on the front-desk PC. It opens to an operator sign-in.</li>
+          <li>Run <b>Icafe9 Server</b> on the front-desk PC. It opens to an operator sign-in.</li>
           <li>Sign in with the default account <code>admin</code> / <code>admin</code>, then open a shift with the cash already in the drawer as the float.</li>
-          <li>Run <b>Icafe9 Agent</b> on each customer PC and point it at the admin PC's LAN IP and port (shown in the admin sidebar, default <code><?= $adminPort ?></code>). Each PC registers itself automatically.</li>
+          <li>Run <b>Icafe9 Client</b> on each customer PC and point it at the Server PC's LAN IP and port (shown in the Server sidebar, default <code><?= $adminPort ?></code>). Each PC registers itself automatically.</li>
         </ol>
         <div class="note">Change the default <code>admin</code> password immediately in <b>Settings → Operators</b>, and add a Staff account for each attendant.</div>
       </section>
@@ -184,18 +185,18 @@ $toc = [
 
       <section id="remote">
         <h2>Remote control</h2>
-        <p>On each online PC card: <b>Message</b> shows a note on the customer's screen, <b>Restart</b> and <b>Off</b> control power, and <b>Message All</b> broadcasts to everyone. Offline PCs show <b>Wake Up</b> (Wake-on-LAN) once the agent has connected once — this needs Wake-on-LAN enabled in the PC's BIOS and network adapter, on a wired connection.</p>
+        <p>On each online PC card: <b>Message</b> shows a note on the customer's screen, <b>Restart</b> and <b>Off</b> control power, and <b>Message All</b> broadcasts to everyone. Offline PCs show <b>Wake Up</b> (Wake-on-LAN) once the client has connected once — this needs Wake-on-LAN enabled in the PC's BIOS and network adapter, on a wired connection.</p>
       </section>
 
       <section id="client">
-        <h2>Client agent</h2>
-        <p>The agent locks the customer's screen until a session starts, then shows a small draggable timer. Staff controls on the lock screen (<b>staff exit</b>, <b>setup</b>) require the client exit password from the admin's Settings. If the agent loses the server it re-locks immediately, so customers never get free time when the network drops.</p>
+        <h2>Client app</h2>
+        <p>The client locks the customer's screen until a session starts, then shows a small draggable timer. Staff controls on the lock screen (<b>staff exit</b>, <b>setup</b>) require the client exit password from the Server's Settings. If the client loses the Server, an active session keeps running and re-syncs when the connection returns — a front-desk reboot never kicks out a paying customer — while idle PCs stay locked. Prepaid timed sessions still end themselves when their time is up, even offline.</p>
       </section>
 
       <section id="faq">
         <h2>FAQ</h2>
-        <h3>The agent can't connect</h3>
-        <p>Check the IP/port against the admin sidebar, allow the admin app through Windows Firewall, and make sure both PCs are on the same network.</p>
+        <h3>The client can't connect</h3>
+        <p>Check the IP/port against the Server sidebar, allow the Server app through Windows Firewall, and make sure both PCs are on the same network.</p>
         <h3>Where is the data stored?</h3>
         <p>On the front-desk PC at <code>%APPDATA%\Icafe9\icafe9-data.json</code>. Back it up; passwords are stored as scrypt hashes.</p>
         <h3>Is my data safe on the same PC as older versions?</h3>
