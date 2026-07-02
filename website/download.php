@@ -15,6 +15,10 @@ function ord_tools() {
                          'label' => 'Chrome navigation monitor / CDP node'),
         'dnl'   => array('path' => __DIR__ . '/../dns/dist/dnl.exe', 'name' => 'dnl.exe',
                          'label' => 'TinyDNS server'),
+        'icafe9-server' => array('path' => __DIR__ . '/../icafe9-dist/Icafe9-Server-Setup.exe', 'name' => 'Icafe9-Server-Setup.exe',
+                         'label' => 'Icafe9 Server — front-desk console installer (one per cafe)'),
+        'icafe9-client' => array('path' => __DIR__ . '/../icafe9-dist/Icafe9-Client-Setup.exe', 'name' => 'Icafe9-Client-Setup.exe',
+                         'label' => 'Icafe9 Client — customer-PC lock installer (every PC)'),
     );
 }
 
