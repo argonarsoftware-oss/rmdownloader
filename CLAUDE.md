@@ -363,22 +363,47 @@ the owner (developer) drives that cafe's LIVE engine remotely from this VPS. The
 dials OUT here (behind NAT, no inbound port) exactly like the agent, and a login-gated web
 console relays developer commands in. INDEPENDENT of the shell-agent queue — its own files,
 its own queue under `data/icafe9/`, so it can't interfere.
-- **`website/icafe9-relay-lib.php`** — self-contained file-queue + registry. Under
-  `DATA_DIR/icafe9/`: `nodes.json` (registry), `<nodeId>/state.json` (latest engine snapshot the
-  cafe pushed), `<nodeId>/online` (ts), `<nodeId>/cmd|res/*.json` (queue). Temp+rename writes.
-- **`website/icafe9-node.php`** — node-facing (the cafe's `.exe` bridge). Auth = shared `ENROLL_KEY`
-  via `X-Node-Token` (same secret as the agents; no session). Actions: `register`, `state` (push a
-  snapshot), `poll` (long-poll ~25s for one queued developer command), `result`.
+- **Companion repo (required reading for anything here):** the cafe-side engine, the two
+  Electron apps, and the `web/bridge.js` that dials this VPS all live in the **`icafe9`** repo
+  (GitHub `argonarsoftware-oss/icafe9`, local `../../fle` = `C:\Users\kirfenia\Desktop\fle`).
+  Its `CLAUDE.md` documents the "one engine, three transports" model and the four-places method
+  map. The `icafe9-console/` assets and the `relay-api.js` shim are copied from that repo — keep
+  the shim's method list in sync with the cafe's `web/methods.js`.
+- **`website/icafe9-relay-lib.php`** — self-contained file-queue + registry + **MySQL mirror**.
+  Under `DATA_DIR/icafe9/`: `nodes.json` (registry), `<nodeId>/state.json` (latest engine snapshot
+  the cafe pushed), `<nodeId>/online` (ts), `<nodeId>/cmd|res/*.json` (queue). Temp+rename writes.
+  `require_once lib.php` at the top so `db()` is available. **The cafe stays local-authoritative;
+  the VPS also mirrors each pushed snapshot into MySQL for durability:** `ic9_db()` lazily
+  `CREATE TABLE icafe9_state (node_id PK, name, updated_at, bytes, state LONGTEXT)`; `ic9_save_state`
+  upserts on every `state` push; `ic9_load_state`/`ic9_nodes` fall back to / merge the DB row so a
+  console read survives a lost/empty `state.json`; `ic9_mirror_status` powers the mirror health
+  read (`db`/`present`/`age_seconds`). Graceful no-DB fallback: with `DB_*` unset it's pure files.
+- **`ic9_safe_id()` (traversal-hardened):** node ids are sanitized to `[0-9A-Za-z._-]`, all `..`
+  stripped in a loop, leading dots trimmed, capped 64 chars — so a hostile `X-Node-Id` can never
+  escape `DATA_DIR/icafe9/` (path-traversal into a sibling dir). Every node/api endpoint routes ids
+  through it before touching the filesystem.
+- **`website/icafe9-node.php`** — node-facing (the cafe's `.exe` bridge). `require_once icafe9-relay-lib.php`
+  (which pulls in `lib.php`, so `db()`/the mirror work). Auth = shared `ENROLL_KEY` via `X-Node-Token`
+  (same secret as the agents; no session). Actions: `register`, `state` (push a snapshot → also
+  mirrored to MySQL), `poll` (long-poll ~25s for one queued developer command), `result`.
 - **`website/icafe9-api.php`** — developer-facing. Auth = site login OR `API_KEY` (like `api.php`).
   `nodes` (list cafes + online), `state&node=` (fast read of the pushed snapshot), `call&node=`
-  (enqueue `{method,payload}` → wait ~12s for the cafe's result).
+  (enqueue `{method,payload}` → wait ~12s for the cafe's result), `mirror&node=` (mirror health).
 - **`website/icafe9.php`** — login-gated console page. Picks a connected cafe (floating picker),
   serves the Icafe9 admin renderer from `icafe9-console/` with a relay shim (`relay-api.js`) that
   recreates `window.api` over `icafe9-api.php`. `icafe9-console/` assets are copied from the Icafe9 repo.
+  **Session-auth gotcha (fixed):** the console showed empty fallback data because `api_authorized()`
+  in `lib.php` checked `is_logged_in()` without first calling `app_session()` — a logged-in browser
+  read as unauthenticated. `api_authorized()` now calls `app_session();` before the login check.
 - **`website/icafe9/index.php`** — public product landing + manual + download page (no auth).
+  Rebranded **Icafe9 Server** / **Icafe9 Client**; download links point at the NSIS installers.
+- **`website/download.php`** (Tools page) serves the two installers: `icafe9-server` /
+  `icafe9-client` are whitelisted in `ord_tools()` and streamed from `../icafe9-dist/`
+  (`Icafe9-Server-Setup.exe` / `Icafe9-Client-Setup.exe`, uploaded out-of-band via scp).
 - **Trust model:** relayed commands run on the cafe engine AS its `developer` account (full access,
-  audit-exempt). The cafe never puts its relay enroll key in the pushed snapshot. Same
-  single-threaded-`php -S` caveat — Apache serves the long-poll + dev calls concurrently.
+  audit-exempt). The cafe never puts its relay enroll key OR the client `exitPassword` in the pushed
+  snapshot (`engine.snapshot()` strips both). Same single-threaded-`php -S` caveat — Apache serves
+  the long-poll + dev calls concurrently.
 
 ## Queue protocol
 Browser/API → `enqueue_command` writes `data/<id>/cmd/<cmdId>.json` → agent long-poll claims it →
