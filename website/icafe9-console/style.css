@@ -46,12 +46,10 @@ body {
   margin-bottom: 10px;
 }
 .brand-logo {
-  width: 34px; height: 34px; border-radius: 3px;
-  background: linear-gradient(180deg, #4a7cd6, var(--navy));
-  border: 1px solid var(--navy);
-  display: grid; place-items: center;
-  font-weight: 700; font-size: 17px; color: #fff;
+  width: 34px; height: 34px; border-radius: 6px;
+  overflow: hidden; display: grid; place-items: center;
 }
+.brand-logo img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .brand-name { font-weight: 700; font-size: 13px; color: var(--navy); }
 .brand-sub { font-size: 11px; color: var(--text-dim); }
 
@@ -312,10 +310,10 @@ input:focus, select:focus { outline: none; border-color: var(--accent); }
   box-shadow: 4px 4px 18px rgba(0,0,0,.4);
 }
 .gate-logo {
-  width: 56px; height: 56px; border-radius: 5px;
-  background: linear-gradient(180deg, #4a7cd6, var(--navy)); border: 1px solid var(--navy);
-  display: grid; place-items: center; color: #fff; font-size: 26px; font-weight: 800;
+  width: 56px; height: 56px; border-radius: 10px;
+  overflow: hidden; display: grid; place-items: center;
 }
+.gate-logo img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .gate-title { font-size: 17px; font-weight: 700; color: var(--navy); }
 .gate-sub { font-size: 12px; color: var(--text-dim); margin-bottom: 6px; }
 .gate-form { width: 100%; display: flex; flex-direction: column; gap: 9px; }
