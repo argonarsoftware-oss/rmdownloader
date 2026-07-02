@@ -684,6 +684,12 @@ function renderSettings() {
     form.currency.value = state.settings.currency;
     form.port.value = state.settings.port;
     form.exitPassword.value = state.settings.exitPassword;
+    const rf = $('#remoteForm');
+    rf.relayUrl.value = state.settings.relayUrl || '';
+    rf.cafeId.value = state.settings.cafeId || '';
+    $('#remoteStatus').innerHTML = state.settings.relayConfigured
+      ? '<b style="color:var(--green)">● Remote access enabled</b>'
+      : 'Remote access is off.';
     settingsLoaded = true;
   }
 
@@ -750,6 +756,18 @@ $('#settingsForm').addEventListener('submit', async (e) => {
     settingsLoaded = false;
     serverInfo = await apiCall('getServerInfo');
     toast('Settings saved');
+  } catch { /* toasted */ }
+});
+
+$('#remoteForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const rf = e.target;
+  const payload = { relayUrl: rf.relayUrl.value, cafeId: rf.cafeId.value };
+  if (rf.relayKey.value) payload.relayKey = rf.relayKey.value; // write-only; blank keeps existing
+  try {
+    await apiCall('saveSettings', payload);
+    settingsLoaded = false;
+    toast('Remote access saved');
   } catch { /* toasted */ }
 });
 
@@ -1156,28 +1174,39 @@ function renderGuide() {
     <ul>
       <li><b>Administrator</b> — full access, including Settings and Operators.</li>
       <li><b>Staff</b> — can run sessions, sales, and members, but cannot change settings or manage operators.</li>
+      <li><b>Developer</b> — full access like an admin, but hidden from the Operators list and <b>exempt from the audit log</b>. Used for remote override (see below).</li>
     </ul>
+
+    <h2>Shifts &amp; cash drawer</h2>
+    <p>After signing in, <b>open a shift</b> with the cash already in the drawer as the opening float. Every cash payment you take is attributed to your shift. At the end, click <b>Close Shift</b> in the sidebar and count the drawer — the app shows the expected amount and whether you are <b>over or short</b>. Shifts survive an app restart and resume on your next sign-in.</p>
 
     <h2>Sessions</h2>
     <ol>
-      <li>Click <b>Start</b> on a PC card.</li>
-      <li><b>Open</b> = billed per minute, paid at the end. <b>Timed</b> = a prepaid block that auto-locks when it runs out.</li>
-      <li>Optionally attach a member and override the tariff.</li>
-      <li>Click <b>Stop</b> to settle — collect cash or charge the member's balance.</li>
+      <li>Click <b>Start</b> on a PC card and choose a type:</li>
+      <li><b>Open</b> — billed per started minute, paid at the end.</li>
+      <li><b>Timed</b> — a prepaid block of minutes that auto-locks when it runs out.</li>
+      <li><b>Package</b> — a fixed-price bundle (e.g. 5 hours for a set price) at a discount to the hourly rate. Manage packages in <b>Settings → Time Packages</b>.</li>
+      <li>Optionally attach a member and override the tariff, then <b>Stop</b> to settle.</li>
     </ol>
-    <div class="g-note g-warn">Member sessions stop automatically just before the balance would go negative; timed sessions stop when the clock hits zero.</div>
+    <div class="g-note g-warn">Member sessions stop automatically just before the balance would go negative; timed and package sessions stop when the clock hits zero.</div>
 
     <h2>Members &amp; balances</h2>
-    <p>Create members with an opening balance; use <b>Deposit</b> to top up. Members can log in on any locked PC themselves and play against their balance.</p>
+    <p>Create members with an opening balance; use <b>Deposit</b> to top up. Members can log in on any locked PC themselves and play against their balance. A red (negative) balance is debt from a forced auto-stop, collected on the next deposit.</p>
 
     <h2>Product sales (POS)</h2>
     <p><b>Quick Sale</b> for walk-ins, or <b>Sell</b> on a PC card. Pay by cash, member balance, or add to the PC's <b>session tab</b> (settled when the session ends). Stock is tracked; low stock is highlighted.</p>
 
     <h2>Remote control</h2>
-    <p>On each online PC card: <b>💬 Msg</b> shows a message on the customer's screen, <b>↻ Restart</b> and <b>⏻ Off</b> control power, and <b>📢 Message All</b> broadcasts to everyone. Offline PCs show <b>⏻ Wake Up</b> (Wake-on-LAN) once the agent has connected once.</p>
+    <p>On each online PC card: <b>💬 Msg</b> shows a message on the customer's screen, <b>↻ Restart</b> and <b>⏻ Off</b> control power, and <b>📢 Message All</b> broadcasts to everyone. Offline PCs show <b>⏻ Wake Up</b> (Wake-on-LAN) once the agent has connected once — needs Wake-on-LAN enabled in the PC's BIOS and network adapter, on a wired connection.</p>
+
+    <h2>Audit log</h2>
+    <p>The <b>Audit Log</b> page records every operator action — edits, deposits, deletes, sales, session start/stop, shift open/close, config changes, and sign-ins — with the operator, time, and details. Filter by operator or action. Developer-account actions are intentionally not recorded.</p>
 
     <h2>Reports</h2>
     <p>Cash collected, balance spent, deposits, time vs product revenue, and full session/sale history for today, yesterday, 7, or 30 days. All amounts are in <code>${esc(cur)}</code> (change the symbol in Settings).</p>
+
+    <h2>Remote access (dos.argonar.co)</h2>
+    <p>Under <b>Settings → Remote Access</b>, set the relay URL (<code>https://dos.argonar.co</code>) and the enroll key to let the owner manage this cafe remotely from the website. This app keeps running normally for the operator; the developer signs in on the website, picks this cafe, and can monitor or override it live. Remote actions run as the developer and are audit-exempt. Leave the URL blank to keep remote access off.</p>
 
     <h2>Client agent (customer PCs)</h2>
     <p>Run the Agent on each customer PC and point it at this server's IP and port (shown in the sidebar). It locks the screen until a session starts, then shows a timer overlay. Staff exit / setup on the lock screen use the <b>client exit password</b> from Settings.</p>`;

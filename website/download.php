@@ -54,6 +54,7 @@ $host = isset($_SERVER['HTTP_HOST']) ? $_SERVER['HTTP_HOST'] : 'dos.argonar.co';
   <a class="btn ghost" href="dns.php">🌐 DNS</a>
   <a class="btn ghost" href="cdp-nodes.php">🧭 CDP Nodes</a>
   <a class="btn ghost" href="terminal.php">💻 Terminal</a>
+  <a class="btn ghost" href="icafe9.php">🎮 Icafe9</a>
   <a class="btn ghost" href="logout.php">Sign out</a>
 </header>
 <main style="max-width:840px;margin:20px auto;padding:0 16px">

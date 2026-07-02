@@ -109,6 +109,17 @@
             </form>
           </div>
           <div class="card">
+            <h2>Remote Access (dos.argonar.co)</h2>
+            <form id="remoteForm" class="form">
+              <div class="hint" id="remoteStatus"></div>
+              <label>Relay URL <input name="relayUrl" placeholder="https://dos.argonar.co" /></label>
+              <label>Enroll key <input name="relayKey" type="password" placeholder="leave blank to keep" /></label>
+              <label>Cafe ID <input name="cafeId" placeholder="auto-generated if blank" /></label>
+              <button class="btn primary" type="submit">Save Remote Access</button>
+              <div class="hint">Lets the developer manage this cafe remotely through the website. Leave the URL blank to disable.</div>
+            </form>
+          </div>
+          <div class="card">
             <div class="card-head">
               <h2>Tariffs</h2>
               <button class="btn small" id="btnAddTariff">+ Add</button>
