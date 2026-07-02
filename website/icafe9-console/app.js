@@ -1139,7 +1139,7 @@ function showGate() {
   const auth = state.auth || {};
   const gate = $('#gate');
   gate.classList.remove('hidden');
-  $('#gateTitle').textContent = state.settings?.cafeName || 'Icafe9 Admin';
+  $('#gateTitle').textContent = state.settings?.cafeName || 'Icafe9 Server';
   if (!auth.operator) {
     $('#gateLogin').classList.remove('hidden');
     $('#gateShift').classList.add('hidden');
@@ -1210,7 +1210,7 @@ function applyRole() {
 function renderAll() {
   if (!state) return;
   $('#brandName').textContent = state.settings.cafeName || 'Icafe9';
-  document.title = `${state.settings.cafeName} — Admin`;
+  document.title = `${state.settings.cafeName} — Server`;
   if (serverInfo) {
     $('#serverInfo').innerHTML = `Agent server<br><b>port ${serverInfo.port}</b><br>${serverInfo.addresses.map(esc).join('<br>') || 'no LAN address'}`;
   }
